@@ -39,7 +39,9 @@ try {
   )
   const clicked = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('[data-worktree-id]')]
-    const row = rows.find((el) => /infra-tools/.test(el.innerText ?? '') && /main-2/.test(el.innerText ?? ''))
+    const row = rows.find(
+      (el) => /infra-tools/.test(el.innerText ?? '') && /main-2/.test(el.innerText ?? '')
+    )
     if (!row) return null
     ;(row.querySelector('[data-worktree-card-surface]') ?? row).click()
     return row.getAttribute('data-worktree-id')
@@ -68,16 +70,28 @@ try {
 } finally {
   out.logs = logs?.filter((l) => !l.includes('Electron Security Warning')).slice(0, 200)
   writeFileSync(path.join(EVIDENCE, 'terminal-ui2-stage.json'), JSON.stringify(out, null, 2))
-  try { await app?.close() } catch {}
-  console.log(JSON.stringify({
-    error: out.error,
-    rows: out.probes.rows,
-    clicked: out.probes.clicked,
-    after: { terms: out.probes.shellAfter?.terminals, tabs: out.probes.shellAfter?.tabs, body: (out.probes.shellAfter?.bodyText ?? '').slice(0, 400) },
-    afterMetaT: { terms: out.probes.afterMetaT?.terminals, tabs: out.probes.afterMetaT?.tabs },
-    focused: out.probes.focused,
-    termTail: (out.probes.term ?? '').slice(-500),
-    longSeen: out.probes.longSeen,
-    logs: out.logs
-  }, null, 2))
+  try {
+    await app?.close()
+  } catch {}
+  console.log(
+    JSON.stringify(
+      {
+        error: out.error,
+        rows: out.probes.rows,
+        clicked: out.probes.clicked,
+        after: {
+          terms: out.probes.shellAfter?.terminals,
+          tabs: out.probes.shellAfter?.tabs,
+          body: (out.probes.shellAfter?.bodyText ?? '').slice(0, 400)
+        },
+        afterMetaT: { terms: out.probes.afterMetaT?.terminals, tabs: out.probes.afterMetaT?.tabs },
+        focused: out.probes.focused,
+        termTail: (out.probes.term ?? '').slice(-500),
+        longSeen: out.probes.longSeen,
+        logs: out.logs
+      },
+      null,
+      2
+    )
+  )
 }

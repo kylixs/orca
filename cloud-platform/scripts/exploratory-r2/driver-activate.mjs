@@ -63,7 +63,25 @@ try {
   out.logs = logs?.slice(0, 200) ?? []
   out.finishedAt = new Date().toISOString()
   writeFileSync(path.join(EVIDENCE, 'activate-stage.json'), JSON.stringify(out, null, 2))
-  try { await page?.screenshot({ path: path.join(EVIDENCE, 'screenshots', '29-activate-final.png') }) } catch {}
-  try { await app?.close() } catch {}
-  console.log(JSON.stringify({ error: out.error, prefill: out.probes.restartPrefill, clicked: out.probes.clickedWorktree, terminals: out.probes.afterActivate?.terminals, tabs: out.probes.afterActivate?.tabs, terminalTextTail: (out.probes.terminalAfterPwd ?? '').slice(-600), uiButtons: out.probes.ui?.buttons?.slice(0, 40) }, null, 2))
+  try {
+    await page?.screenshot({ path: path.join(EVIDENCE, 'screenshots', '29-activate-final.png') })
+  } catch {}
+  try {
+    await app?.close()
+  } catch {}
+  console.log(
+    JSON.stringify(
+      {
+        error: out.error,
+        prefill: out.probes.restartPrefill,
+        clicked: out.probes.clickedWorktree,
+        terminals: out.probes.afterActivate?.terminals,
+        tabs: out.probes.afterActivate?.tabs,
+        terminalTextTail: (out.probes.terminalAfterPwd ?? '').slice(-600),
+        uiButtons: out.probes.ui?.buttons?.slice(0, 40)
+      },
+      null,
+      2
+    )
+  )
 }

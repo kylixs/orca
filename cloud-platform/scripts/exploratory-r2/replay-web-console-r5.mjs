@@ -18,9 +18,15 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
 const page = await context.newPage()
 page.setDefaultTimeout(25000)
 const puts = []
-page.on('request', (r) => { if (r.method() === 'PUT' && r.url().includes('/grants')) puts.push(r.url()) })
+page.on('request', (r) => {
+  if (r.method() === 'PUT' && r.url().includes('/grants')) puts.push(r.url())
+})
 page.on('dialog', (d) => d.accept())
-const out = { check: 'U53② logout clears credentials · U53④ duplicate grant asks first', base: BASE, steps: {} }
+const out = {
+  check: 'U53② logout clears credentials · U53④ duplicate grant asks first',
+  base: BASE,
+  steps: {}
+}
 try {
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' })
   await page.locator('#loginForm').waitFor()
@@ -37,8 +43,16 @@ try {
   out.steps.logout = {
     username: await page.inputValue('#username'),
     password: await page.inputValue('#password'),
-    loginError: (await page.locator('#loginError').innerText().catch(() => '')).trim(),
-    loginErrorHidden: await page.locator('#loginError').isHidden().catch(() => null),
+    loginError: (
+      await page
+        .locator('#loginError')
+        .innerText()
+        .catch(() => '')
+    ).trim(),
+    loginErrorHidden: await page
+      .locator('#loginError')
+      .isHidden()
+      .catch(() => null),
     appHidden: await page.locator('#view-app').isHidden()
   }
   out.steps.logout.pass = out.steps.logout.username === '' && out.steps.logout.password === ''
@@ -54,14 +68,21 @@ try {
     const res = await fetch('/v1/projects/proj_payment/grants', {
       method: 'PUT',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ subjectType: 'user', subjectId: 'zhangsan', permissions: ['open', 'file:read'] })
+      body: JSON.stringify({
+        subjectType: 'user',
+        subjectId: 'zhangsan',
+        permissions: ['open', 'file:read']
+      })
     })
     return { status: res.status, body: await res.json().catch(() => ({})) }
   })
   const before = puts.length
   await page.locator('.nav-item[data-route="members"]').click()
   await page.locator('#memberProjectList').waitFor()
-  await page.locator('#memberProjectList [data-material]', { hasText: 'payment-service' }).first().click()
+  await page
+    .locator('#memberProjectList [data-material]', { hasText: 'payment-service' })
+    .first()
+    .click()
   await page.locator('#grantSubject').waitFor()
   // The project click re-renders the panel asynchronously; let it settle so the
   // fill/click land on the final DOM and the wired handler.
@@ -70,10 +91,15 @@ try {
   await page.fill('#grantSubject', 'zhangsan')
   await page.click('#grantAdd')
   const dialog = page.locator('.dialog')
-  const dialogVisible = await dialog.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false)
+  const dialogVisible = await dialog
+    .waitFor({ state: 'visible', timeout: 5000 })
+    .then(() => true)
+    .catch(() => false)
   out.steps.duplicate = {
     dialogVisible,
-    dialogText: dialogVisible ? (await dialog.innerText()).replace(/\s+/g, ' ').slice(0, 500) : null,
+    dialogText: dialogVisible
+      ? (await dialog.innerText()).replace(/\s+/g, ' ').slice(0, 500)
+      : null,
     putsBeforeConfirm: puts.length - before
   }
   if (dialogVisible) {
@@ -83,9 +109,13 @@ try {
   out.steps.duplicate.putsAfterConfirm = puts.length - before
   out.steps.duplicate.after = await page.evaluate(async () => {
     const token = localStorage.getItem('orca.access')
-    const res = await fetch('/v1/projects/proj_payment/grants', { headers: { authorization: `Bearer ${token}` } })
+    const res = await fetch('/v1/projects/proj_payment/grants', {
+      headers: { authorization: `Bearer ${token}` }
+    })
     const body = await res.json()
-    const row = body.grants.find((g) => g.subjectType === 'user' && (g.username === 'zhangsan' || g.subjectId === 'zhangsan'))
+    const row = body.grants.find(
+      (g) => g.subjectType === 'user' && (g.username === 'zhangsan' || g.subjectId === 'zhangsan')
+    )
     return { status: res.status, permissions: row ? [...row.permissions].sort() : null }
   })
   out.steps.duplicate.pass =
@@ -111,5 +141,7 @@ try {
   out.generatedAt = new Date().toISOString()
   fs.writeFileSync(path.join(OUT, 'p1-logout-grant-confirm.json'), JSON.stringify(out, null, 2))
   await browser.close()
-  console.log(`${out.pass ? 'PASS' : 'FAIL'} web-console-r5 ${JSON.stringify(out.steps).slice(0, 800)}`)
+  console.log(
+    `${out.pass ? 'PASS' : 'FAIL'} web-console-r5 ${JSON.stringify(out.steps).slice(0, 800)}`
+  )
 }

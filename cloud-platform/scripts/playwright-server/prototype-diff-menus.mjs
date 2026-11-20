@@ -7,7 +7,9 @@ function collectOverlay(side, key) {
   for (const surface of Object.values(side.surfaces)) {
     for (const item of surface[key] ?? []) {
       const name = normalizeLabel(item.name)
-      if (seen.has(name)) {continue}
+      if (seen.has(name)) {
+        continue
+      }
       seen.add(name)
       out.push(item)
     }
@@ -15,18 +17,24 @@ function collectOverlay(side, key) {
   return out
 }
 
-
 function compareNavTitles({ add, role, prototype, actual }) {
   const prototypeSurface =
     prototype.surfaces.workbench ??
     Object.values(prototype.surfaces).find((surface) => surface.nav.length)
   const actualSurface =
-    actual.surfaces.workbench ?? Object.values(actual.surfaces).find((surface) => surface.nav.length)
-  if (!prototypeSurface || !actualSurface) {return}
+    actual.surfaces.workbench ??
+    Object.values(actual.surfaces).find((surface) => surface.nav.length)
+  if (!prototypeSurface || !actualSurface) {
+    return
+  }
   for (const prototypeItem of prototypeSurface.nav) {
-    if (!prototypeItem.route) {continue}
+    if (!prototypeItem.route) {
+      continue
+    }
     const actualItem = actualSurface.nav.find((item) => item.route === prototypeItem.route)
-    if (!actualItem) {continue}
+    if (!actualItem) {
+      continue
+    }
     if (normalizeLabel(prototypeItem.label) !== normalizeLabel(actualItem.label)) {
       add({
         role,
@@ -43,7 +51,9 @@ function compareNavTitles({ add, role, prototype, actual }) {
     }
     const prototypeInventory = prototype.surfaces[prototypeItem.route]
     const actualInventory = actual.surfaces[prototypeItem.route]
-    if (!prototypeInventory || !actualInventory) {continue}
+    if (!prototypeInventory || !actualInventory) {
+      continue
+    }
     const prototypeTitle = normalizeLabel(prototypeInventory.title)
     const actualTitle = normalizeLabel(actualInventory.title)
     if (prototypeTitle && actualTitle && prototypeTitle !== actualTitle) {
@@ -107,9 +117,7 @@ function compareOverlayKind({ add, role, kind, prototypeItems, actualItems, seve
       actual: null,
       message: `${kind}「${prototypeItems[index].name}」在实际侧未清点到`,
       suggestion:
-        kind === 'dialog'
-          ? '对照时按需打开该 dialog 或用 aria 快照复核'
-          : '确认该入口是否已移除'
+        kind === 'dialog' ? '对照时按需打开该 dialog 或用 aria 快照复核' : '确认该入口是否已移除'
     })
   )
   match.extra.forEach((index) =>
@@ -127,7 +135,9 @@ function compareOverlayKind({ add, role, kind, prototypeItems, actualItems, seve
     })
   )
   for (const pair of match.pairs) {
-    if (pair.via === 'exact') {continue}
+    if (pair.via === 'exact') {
+      continue
+    }
     const prototypeItem = prototypeItems[pair.prototypeIndex]
     const actualItem = actualItems[pair.actualIndex]
     add({
@@ -144,6 +154,5 @@ function compareOverlayKind({ add, role, kind, prototypeItems, actualItems, seve
     })
   }
 }
-
 
 export { compareNavTitles, compareOverlays }

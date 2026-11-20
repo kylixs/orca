@@ -11,7 +11,15 @@
  *
  * No product code is changed. Findings are recorded, not fixed.
  */
-import { writeFileSync, readFileSync, existsSync, copyFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs'
+import {
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  copyFileSync,
+  unlinkSync,
+  mkdirSync,
+  rmSync
+} from 'node:fs'
 import https from 'node:https'
 import path from 'node:path'
 import {
@@ -35,7 +43,8 @@ const REPO = '/Users/gongdewei/work/projects/orca'
 const OUT = path.join(REPO, 'cloud-platform/evidence/man-review/desktop')
 const DEV_CA = '/Users/gongdewei/orca-local-env/tls/ca.pem'
 const USER_DATA = '/tmp/orca-man-review/ud-main'
-const MAIN2 = '/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/zhangsan/main-2'
+const MAIN2 =
+  '/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/zhangsan/main-2'
 const README = path.join(MAIN2, 'README.md')
 const README_BAK = '/tmp/orca-man-review/README.main-2.bak'
 const BIN = path.join(MAIN2, 'man-review-binary.bin')
@@ -89,7 +98,9 @@ async function clickAriaPrefix(prefix) {
   return page.evaluate((p) => {
     const els = [...document.querySelectorAll('[aria-label]')]
     const el = els.find(
-      (e) => (e.getAttribute('aria-label') ?? '').startsWith(p) && (e.offsetParent !== null || e.getClientRects().length > 0)
+      (e) =>
+        (e.getAttribute('aria-label') ?? '').startsWith(p) &&
+        (e.offsetParent !== null || e.getClientRects().length > 0)
     )
     if (!el) return null
     el.click()
@@ -154,7 +165,14 @@ async function doStep({ pathId, action, slug, read, expect, note, screenshotOnly
       passed = false
     }
   }
-  const result = actionError || shotError || readError ? 'error' : passed === null ? 'observed' : passed ? 'pass' : 'fail'
+  const result =
+    actionError || shotError || readError
+      ? 'error'
+      : passed === null
+        ? 'observed'
+        : passed
+          ? 'pass'
+          : 'fail'
   const record = {
     step: steps.length + 1,
     path: pathId,
@@ -221,14 +239,19 @@ try {
   await doStep({
     pathId: 'A.0',
     slug: 'bare-shell',
-    note: { action: '裸启动（无 ORCA_CLOUD_API_URL）进入原生 shell', expected: '状态栏有 登录云端平台，未登录' },
+    note: {
+      action: '裸启动（无 ORCA_CLOUD_API_URL）进入原生 shell',
+      expected: '状态栏有 登录云端平台，未登录'
+    },
     action: async () => {},
     read: async () => {
       const shell = await readShell(page)
       return {
         innerText: shell.statusBar,
         signedIn: shell.signedInSegment,
-        loginEntry: await page.evaluate(() => Boolean(document.querySelector('[data-status-bar] [data-cloud-login-entry]'))),
+        loginEntry: await page.evaluate(() =>
+          Boolean(document.querySelector('[data-status-bar] [data-cloud-login-entry]'))
+        ),
         worktreeRows: shell.worktrees.length
       }
     },
@@ -238,11 +261,19 @@ try {
   await doStep({
     pathId: 'A.2',
     slug: 'login-dialog-empty',
-    note: { action: '点击「登录云端平台」打开登录对话框', expected: '地址/用户名为空，空表单提交禁用' },
+    note: {
+      action: '点击「登录云端平台」打开登录对话框',
+      expected: '地址/用户名为空，空表单提交禁用'
+    },
     action: async () => openLoginDialog(page),
     read: async () => {
       const d = await readLoginDialog(page)
-      return { innerText: d?.text ?? null, address: d?.address, username: d?.username, submitDisabled: d?.submitDisabled }
+      return {
+        innerText: d?.text ?? null,
+        address: d?.address,
+        username: d?.username,
+        submitDisabled: d?.submitDisabled
+      }
     },
     expect: (a) => a && a.address === '' && a.username === '' && a.submitDisabled === true
   })
@@ -250,9 +281,16 @@ try {
   await doStep({
     pathId: 'A.3',
     slug: 'login-wrong-password',
-    note: { action: '输入地址/账号与错误密码并提交', expected: '对话框 role=alert 显示 账号或密码不正确。' },
+    note: {
+      action: '输入地址/账号与错误密码并提交',
+      expected: '对话框 role=alert 显示 账号或密码不正确。'
+    },
     action: async () => {
-      await fillLogin(page, { address: PLATFORM_URL, username: 'zhangsan', password: 'WrongPass!000' })
+      await fillLogin(page, {
+        address: PLATFORM_URL,
+        username: 'zhangsan',
+        password: 'WrongPass!000'
+      })
       await submitLogin(page)
       await poll(
         () =>
@@ -269,7 +307,8 @@ try {
       const d = await readLoginDialog(page)
       return { innerText: d?.text ?? null, alerts: d?.alerts, notices: d?.notices }
     },
-    expect: (a) => a && Array.isArray(a.alerts) && a.alerts.some((t) => t.includes('账号或密码不正确'))
+    expect: (a) =>
+      a && Array.isArray(a.alerts) && a.alerts.some((t) => t.includes('账号或密码不正确'))
   })
 
   await doStep({
@@ -287,16 +326,26 @@ try {
       return {
         innerText: shell.statusBar,
         signedIn: shell.signedInSegment,
-        loginEntry: await page.evaluate(() => Boolean(document.querySelector('[data-status-bar] [data-cloud-login-entry]')))
+        loginEntry: await page.evaluate(() =>
+          Boolean(document.querySelector('[data-status-bar] [data-cloud-login-entry]'))
+        )
       }
     },
-    expect: (a) => a && a.signedIn === true && a.loginEntry === false && /张伟/.test(a.innerText) && /登出/.test(a.innerText)
+    expect: (a) =>
+      a &&
+      a.signedIn === true &&
+      a.loginEntry === false &&
+      /张伟/.test(a.innerText) &&
+      /登出/.test(a.innerText)
   })
 
   await doStep({
     pathId: 'A.5',
     slug: 'project-list-hydrated',
-    note: { action: '等待注册/水合（8-15s）', expected: '侧栏出现云端项目工作树行；失败 banner 仅列真实失败项' },
+    note: {
+      action: '等待注册/水合（8-15s）',
+      expected: '侧栏出现云端项目工作树行；失败 banner 仅列真实失败项'
+    },
     action: async () => {
       await poll(async () => ((await rowsSnapshot()).length > 0 ? true : null), 45_000)
       await wait(3000)
@@ -317,10 +366,16 @@ try {
   })
 
   if (steps[steps.length - 1]?.assertion?.alerts?.length) {
-    addDeviation('A.5', `登录后失败 banner 非空：${JSON.stringify(steps[steps.length - 1].assertion.alerts)}（payment-service 为离线 seed 项；需人工判断是否仅列真实失败项）`)
+    addDeviation(
+      'A.5',
+      `登录后失败 banner 非空：${JSON.stringify(steps[steps.length - 1].assertion.alerts)}（payment-service 为离线 seed 项；需人工判断是否仅列真实失败项）`
+    )
   }
   if (steps[steps.length - 1]?.assertion?.toasts?.length) {
-    addDeviation('A.5', `登录后出现 toast：${JSON.stringify(steps[steps.length - 1].assertion.toasts)}（路径检查点要求网络/主机失败不出现英文 toast）`)
+    addDeviation(
+      'A.5',
+      `登录后出现 toast：${JSON.stringify(steps[steps.length - 1].assertion.toasts)}（路径检查点要求网络/主机失败不出现英文 toast）`
+    )
   }
 
   // ---------------------------------------------------------------------------
@@ -329,7 +384,10 @@ try {
   await doStep({
     pathId: 'B.1',
     slug: 'project-opened',
-    note: { action: '点击侧栏 infra-tools / main-2 工作树卡片表面', expected: '该工作树成为活动工作区并出现标签页' },
+    note: {
+      action: '点击侧栏 infra-tools / main-2 工作树卡片表面',
+      expected: '该工作树成为活动工作区并出现标签页'
+    },
     action: async () => {
       const clicked = await clickWorktreeRow(['infra-tools', 'main-2'])
       if (!clicked) throw new Error('infra-tools main-2 row not found')
@@ -362,12 +420,19 @@ try {
   await doStep({
     pathId: 'B.2',
     slug: 'open-workspace-route',
-    note: { action: '调用 window.api.cloud.openWorkspace(infra-tools)', expected: 'ok=true，route=direct|relay，workspacePath 位于每人 checkout' },
+    note: {
+      action: '调用 window.api.cloud.openWorkspace(infra-tools)',
+      expected: 'ok=true，route=direct|relay，workspacePath 位于每人 checkout'
+    },
     action: async () => {
       openResult = await page.evaluate(async () => {
         const state = await window.api.cloud.getState()
         const project = state.projects?.find((p) => p.key === 'infra-tools')
-        if (!project) return { error: 'infra-tools project missing', projects: state.projects?.map((p) => p.key) }
+        if (!project)
+          return {
+            error: 'infra-tools project missing',
+            projects: state.projects?.map((p) => p.key)
+          }
         const opened = await window.api.cloud.openWorkspace(project.id)
         return { projectId: project.id, opened }
       })
@@ -394,13 +459,22 @@ try {
   })
 
   if (steps[steps.length - 1]?.result !== 'pass') {
-    addFinding('D-OPEN-WORKSPACE', 'P1', 'openWorkspace 未返回可用工作区', JSON.stringify(steps[steps.length - 1]?.assertion ?? {}), steps[steps.length - 1]?.screenshot)
+    addFinding(
+      'D-OPEN-WORKSPACE',
+      'P1',
+      'openWorkspace 未返回可用工作区',
+      JSON.stringify(steps[steps.length - 1]?.assertion ?? {}),
+      steps[steps.length - 1]?.screenshot
+    )
   }
 
   await doStep({
     pathId: 'B.3',
     slug: 'route-badge-check',
-    note: { action: '检查活动工作区上的直连/中继徽标', expected: '线路只能从桥接结果读取（已记为 P3，无 UI 徽标）' },
+    note: {
+      action: '检查活动工作区上的直连/中继徽标',
+      expected: '线路只能从桥接结果读取（已记为 P3，无 UI 徽标）'
+    },
     action: async () => {},
     read: async () => {
       const badges = await page.evaluate(() => {
@@ -411,16 +485,26 @@ try {
           routeFromBridge: null
         }
       })
-      return { innerText: JSON.stringify(badges), ...badges, routeFromBridge: openResult?.opened?.route ?? null }
+      return {
+        innerText: JSON.stringify(badges),
+        ...badges,
+        routeFromBridge: openResult?.opened?.route ?? null
+      }
     },
     expect: () => true
   })
-  addDeviation('B.3', '桌面原生 shell 无直连/中继徽标；route 仅能从 openWorkspace 桥接结果读取（P3，与路径清单一致）。')
+  addDeviation(
+    'B.3',
+    '桌面原生 shell 无直连/中继徽标；route 仅能从 openWorkspace 桥接结果读取（P3，与路径清单一致）。'
+  )
 
   await doStep({
     pathId: 'B.4',
     slug: 'open-idempotent',
-    note: { action: '并发两次打开同一项目，再打开另一项目，再打开回原项目', expected: '均 ok=true；同一项目同一 workspacePath；无重复行' },
+    note: {
+      action: '并发两次打开同一项目，再打开另一项目，再打开回原项目',
+      expected: '均 ok=true；同一项目同一 workspacePath；无重复行'
+    },
     action: async () => {
       await page.evaluate(async () => {
         const bridge = window.api.cloud
@@ -431,7 +515,10 @@ try {
         window.__manReviewIdempotent = {
           target: target.key,
           other: other.key,
-          concurrent: await Promise.all([bridge.openWorkspace(target.id), bridge.openWorkspace(target.id)]),
+          concurrent: await Promise.all([
+            bridge.openWorkspace(target.id),
+            bridge.openWorkspace(target.id)
+          ]),
           different: await bridge.openWorkspace(other.id),
           again: await bridge.openWorkspace(target.id)
         }
@@ -441,7 +528,8 @@ try {
     read: async () => {
       const result = await page.evaluate(() => window.__manReviewIdempotent)
       const rows = await rowsSnapshot()
-      const pick = (r) => r && { ok: r.ok, route: r.route, workspacePath: r.workspacePath, code: r.code }
+      const pick = (r) =>
+        r && { ok: r.ok, route: r.route, workspacePath: r.workspacePath, code: r.code }
       return {
         innerText: `rows=${rows.length}`,
         target: result?.target,
@@ -469,9 +557,14 @@ try {
   await doStep({
     pathId: 'C.1',
     slug: 'terminal-ui-attempt',
-    note: { action: '选中云工作区后点击「新标签页」→「新终端」', expected: '应出现 .xterm 与 .xterm-helper-textarea' },
+    note: {
+      action: '选中云工作区后点击「新标签页」→「新终端」',
+      expected: '应出现 .xterm 与 .xterm-helper-textarea'
+    },
     action: async () => {
-      const plus = page.locator('button[aria-label="新标签页"], button[aria-label="New tab"]').first()
+      const plus = page
+        .locator('button[aria-label="新标签页"], button[aria-label="New tab"]')
+        .first()
       if (await plus.isVisible().catch(() => false)) {
         await plus.click({ timeout: 5000 }).catch(() => {})
         await wait(1200)
@@ -517,7 +610,10 @@ try {
   await doStep({
     pathId: 'C.2',
     slug: 'terminal-ui-input',
-    note: { action: '聚焦 UI 终端并输入 pwd / 中文回声', expected: '终端输出包含 MAN_REVIEW_UI 与 中文界面回声（若 UI 终端未能创建则记录阻塞）' },
+    note: {
+      action: '聚焦 UI 终端并输入 pwd / 中文回声',
+      expected: '终端输出包含 MAN_REVIEW_UI 与 中文界面回声（若 UI 终端未能创建则记录阻塞）'
+    },
     action: async () => {
       const focused = await focusTerminal(page)
       if (focused) {
@@ -543,7 +639,10 @@ try {
   await doStep({
     pathId: 'C.3',
     slug: 'terminal-rpc-created',
-    note: { action: '在每人 checkout 上调用 terminal.create（RPC 路径）', expected: 'create ok=true 且返回终端句柄' },
+    note: {
+      action: '在每人 checkout 上调用 terminal.create（RPC 路径）',
+      expected: 'create ok=true 且返回终端句柄'
+    },
     action: async () => {
       rpc = await page.evaluate(async () => {
         const bridge = window.api.cloud
@@ -552,11 +651,15 @@ try {
         const opened = await bridge.openWorkspace(project.id)
         const envs = await window.api.runtimeEnvironments.list()
         const env = envs.find((e) => e.name === 'infra-tools')
-        if (!opened.ok || !env) return { opened, envId: env?.id ?? null, created: null, handle: null }
+        if (!opened.ok || !env)
+          return { opened, envId: env?.id ?? null, created: null, handle: null }
         const created = await window.api.runtimeEnvironments.call({
           selector: env.id,
           method: 'terminal.create',
-          params: { worktree: `path:${opened.workspacePath}`, clientMutationId: 'man-review-desktop' },
+          params: {
+            worktree: `path:${opened.workspacePath}`,
+            clientMutationId: 'man-review-desktop'
+          },
           timeoutMs: 25000
         })
         const handle =
@@ -566,7 +669,12 @@ try {
           created?.terminal?.terminal ??
           created?.terminal ??
           (typeof created?.result === 'string' ? created.result : null)
-        return { opened, envId: env.id, created, handle: typeof handle === 'string' ? handle : null }
+        return {
+          opened,
+          envId: env.id,
+          created,
+          handle: typeof handle === 'string' ? handle : null
+        }
       })
       await wait(1000)
     },
@@ -584,28 +692,50 @@ try {
     expect: (a) => a && a.openedOk === true && a.createdOk === true && typeof a.handle === 'string'
   })
   if (steps[steps.length - 1]?.result !== 'pass') {
-    addFinding('D-RPC-TERMINAL-CREATE', 'P1', '宿主 RPC 终端创建失败', JSON.stringify(steps[steps.length - 1]?.assertion ?? {}), steps[steps.length - 1]?.screenshot)
+    addFinding(
+      'D-RPC-TERMINAL-CREATE',
+      'P1',
+      '宿主 RPC 终端创建失败',
+      JSON.stringify(steps[steps.length - 1]?.assertion ?? {}),
+      steps[steps.length - 1]?.screenshot
+    )
   }
 
   let rpcReadText = ''
   await doStep({
     pathId: 'C.4',
     slug: 'terminal-rpc-input',
-    note: { action: '通过 RPC send/read 输入 pwd、MAN_RPC_ECHO、中文直连回声', expected: '读回包含 MAN_RPC_ECHO 与 中文直连回声' },
+    note: {
+      action: '通过 RPC send/read 输入 pwd、MAN_RPC_ECHO、中文直连回声',
+      expected: '读回包含 MAN_RPC_ECHO 与 中文直连回声'
+    },
     action: async () => {
       if (!rpc.handle) return
-      const result = await page.evaluate(async ({ envId, handle }) => {
-        const call = (method, params) =>
-          window.api.runtimeEnvironments.call({ selector: envId, method, params, timeoutMs: 25000 })
-        const send = await call('terminal.send', {
-          terminal: handle,
-          text: 'pwd && echo MAN_RPC_ECHO && echo 中文直连回声',
-          enter: true
-        })
-        await new Promise((resolve) => setTimeout(resolve, 3000))
-        const read = await call('terminal.read', { terminal: handle })
-        return { send, read, text: typeof read?.result === 'string' ? read.result : JSON.stringify(read?.result ?? '') }
-      }, { envId: rpc.envId, handle: rpc.handle })
+      const result = await page.evaluate(
+        async ({ envId, handle }) => {
+          const call = (method, params) =>
+            window.api.runtimeEnvironments.call({
+              selector: envId,
+              method,
+              params,
+              timeoutMs: 25000
+            })
+          const send = await call('terminal.send', {
+            terminal: handle,
+            text: 'pwd && echo MAN_RPC_ECHO && echo 中文直连回声',
+            enter: true
+          })
+          await new Promise((resolve) => setTimeout(resolve, 3000))
+          const read = await call('terminal.read', { terminal: handle })
+          return {
+            send,
+            read,
+            text:
+              typeof read?.result === 'string' ? read.result : JSON.stringify(read?.result ?? '')
+          }
+        },
+        { envId: rpc.envId, handle: rpc.handle }
+      )
       rpcReadText = result.text
       mem.rpcEcho = result
     },
@@ -619,7 +749,8 @@ try {
         chineseSeen: (rpcReadText ?? '').includes('中文直连回声')
       }
     },
-    expect: (a) => a && a.sendOk === true && a.readOk === true && a.echoSeen === true && a.chineseSeen === true
+    expect: (a) =>
+      a && a.sendOk === true && a.readOk === true && a.echoSeen === true && a.chineseSeen === true
   })
 
   await doStep({
@@ -628,18 +759,31 @@ try {
     note: { action: '通过 RPC 输入 300 行长输出并读取', expected: '读回包含 RPC_LONG_300' },
     action: async () => {
       if (!rpc.handle) return
-      const result = await page.evaluate(async ({ envId, handle }) => {
-        const call = (method, params) =>
-          window.api.runtimeEnvironments.call({ selector: envId, method, params, timeoutMs: 25000 })
-        const send = await call('terminal.send', {
-          terminal: handle,
-          text: 'for i in $(seq 1 300); do echo RPC_LONG_$i; done',
-          enter: true
-        })
-        await new Promise((resolve) => setTimeout(resolve, 4000))
-        const read = await call('terminal.read', { terminal: handle, limit: 200000 })
-        return { send, read, text: typeof read?.result === 'string' ? read.result : JSON.stringify(read?.result ?? '') }
-      }, { envId: rpc.envId, handle: rpc.handle })
+      const result = await page.evaluate(
+        async ({ envId, handle }) => {
+          const call = (method, params) =>
+            window.api.runtimeEnvironments.call({
+              selector: envId,
+              method,
+              params,
+              timeoutMs: 25000
+            })
+          const send = await call('terminal.send', {
+            terminal: handle,
+            text: 'for i in $(seq 1 300); do echo RPC_LONG_$i; done',
+            enter: true
+          })
+          await new Promise((resolve) => setTimeout(resolve, 4000))
+          const read = await call('terminal.read', { terminal: handle, limit: 200000 })
+          return {
+            send,
+            read,
+            text:
+              typeof read?.result === 'string' ? read.result : JSON.stringify(read?.result ?? '')
+          }
+        },
+        { envId: rpc.envId, handle: rpc.handle }
+      )
       mem.rpcLong = result
     },
     read: async () => {
@@ -686,7 +830,10 @@ try {
   await doStep({
     pathId: 'D.1',
     slug: 'explorer-open',
-    note: { action: '点击右栏 Explorer 按钮', expected: '[data-orca-explorer-shell] 出现且文件行可用' },
+    note: {
+      action: '点击右栏 Explorer 按钮',
+      expected: '[data-orca-explorer-shell] 出现且文件行可用'
+    },
     action: async () => {
       const label = await clickAriaPrefix('Explorer')
       if (!label) throw new Error('Explorer rail button not found')
@@ -701,7 +848,11 @@ try {
               .slice(0, 40)
           : null
       })
-      return { innerText: JSON.stringify(shell ?? []), shellPresent: Array.isArray(shell), rows: shell }
+      return {
+        innerText: JSON.stringify(shell ?? []),
+        shellPresent: Array.isArray(shell),
+        rows: shell
+      }
     },
     expect: (a) => a && a.shellPresent === true && Array.isArray(a.rows) && a.rows.length > 0
   })
@@ -709,12 +860,17 @@ try {
   await doStep({
     pathId: 'D.2',
     slug: 'file-opened',
-    note: { action: '单击 README.md', expected: '.editor-header-path 指向每人 checkout；可编辑表面为 ProseMirror 或 Monaco' },
+    note: {
+      action: '单击 README.md',
+      expected: '.editor-header-path 指向每人 checkout；可编辑表面为 ProseMirror 或 Monaco'
+    },
     action: async () => {
       const opened = await page.evaluate(() => {
         const shell = document.querySelector('[data-orca-explorer-shell]')
         const row = shell
-          ? [...shell.querySelectorAll('button[data-file-explorer-row]')].find((el) => /README\.md/i.test(el.innerText ?? ''))
+          ? [...shell.querySelectorAll('button[data-file-explorer-row]')].find((el) =>
+              /README\.md/i.test(el.innerText ?? '')
+            )
           : null
         if (!row) return null
         row.click()
@@ -722,7 +878,10 @@ try {
       })
       if (!opened) throw new Error('README.md row not found')
       await poll(
-        () => page.evaluate(() => Boolean(document.querySelector('.ProseMirror[contenteditable="true"], .monaco-editor'))),
+        () =>
+          page.evaluate(() =>
+            Boolean(document.querySelector('.ProseMirror[contenteditable="true"], .monaco-editor'))
+          ),
         20_000
       )
       await wait(1500)
@@ -730,9 +889,12 @@ try {
     read: async () => {
       const dom = await page.evaluate(() => ({
         proseMirror: Boolean(document.querySelector('.ProseMirror')),
-        proseEditable: document.querySelector('.ProseMirror')?.getAttribute('contenteditable') ?? null,
+        proseEditable:
+          document.querySelector('.ProseMirror')?.getAttribute('contenteditable') ?? null,
         monaco: Boolean(document.querySelector('.monaco-editor')),
-        headers: [...document.querySelectorAll('.editor-header-path')].map((el) => el.textContent?.trim()),
+        headers: [...document.querySelectorAll('.editor-header-path')].map((el) =>
+          el.textContent?.trim()
+        ),
         body: (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 600)
       }))
       return {
@@ -799,13 +961,22 @@ try {
     expect: (a) => a && a.saveRoundTrip === true
   })
   if (steps[steps.length - 1]?.result !== 'pass') {
-    addFinding('D-FILE-SAVE-FAIL', 'P2', '编辑保存未落盘', `追加标记后 Cmd+S，磁盘 README.md 未包含 ${marker}`, steps[steps.length - 1]?.screenshot)
+    addFinding(
+      'D-FILE-SAVE-FAIL',
+      'P2',
+      '编辑保存未落盘',
+      `追加标记后 Cmd+S，磁盘 README.md 未包含 ${marker}`,
+      steps[steps.length - 1]?.screenshot
+    )
   }
 
   await doStep({
     pathId: 'D.5',
     slug: 'md-preview',
-    note: { action: '切换到 Markdown 预览模式', expected: '正文渲染标题/正文（基础设施运维工具集）' },
+    note: {
+      action: '切换到 Markdown 预览模式',
+      expected: '正文渲染标题/正文（基础设施运维工具集）'
+    },
     action: async () => {
       mem.toggleLabels = await page.evaluate(() => {
         const items = [...document.querySelectorAll('[data-slot="toggle-group-item"]')]
@@ -840,20 +1011,28 @@ try {
     expect: (a) => a && a.renderedHeading === true
   })
   if (!steps[steps.length - 1]?.assertion?.clicked) {
-    addDeviation('D.5', `未找到 Markdown 预览切换控件；编辑器切换组标签=${JSON.stringify(steps[steps.length - 1]?.assertion?.toggleLabels ?? [])}。渲染标题检查仍执行。`)
+    addDeviation(
+      'D.5',
+      `未找到 Markdown 预览切换控件；编辑器切换组标签=${JSON.stringify(steps[steps.length - 1]?.assertion?.toggleLabels ?? [])}。渲染标题检查仍执行。`
+    )
   }
 
   await doStep({
     pathId: 'D.6',
     slug: 'binary-check',
-    note: { action: '写入含 0x00/0xFF 的 .bin，刷新 Explorer 后打开', expected: '给出二进制/不支持提示，不按文本展示控制字符' },
+    note: {
+      action: '写入含 0x00/0xFF 的 .bin，刷新 Explorer 后打开',
+      expected: '给出二进制/不支持提示，不按文本展示控制字符'
+    },
     action: async () => {
       writeFileSync(BIN, Buffer.from([0, 1, 2, 3, 255, 254, 0, 66, 67]))
       await page.evaluate(() => {
         const shell = document.querySelector('[data-orca-explorer-shell]')
         const btn = shell
           ? [...shell.querySelectorAll('button')].find((b) =>
-              /刷新|refresh/i.test(`${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''}`)
+              /刷新|refresh/i.test(
+                `${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''}`
+              )
             )
           : null
         btn?.click()
@@ -862,7 +1041,9 @@ try {
       const opened = await page.evaluate(() => {
         const shell = document.querySelector('[data-orca-explorer-shell]')
         const row = shell
-          ? [...shell.querySelectorAll('button[data-file-explorer-row]')].find((el) => /man-review-binary\.bin/i.test(el.innerText ?? ''))
+          ? [...shell.querySelectorAll('button[data-file-explorer-row]')].find((el) =>
+              /man-review-binary\.bin/i.test(el.innerText ?? '')
+            )
           : null
         if (!row) return null
         row.click()
@@ -898,14 +1079,22 @@ try {
   await doStep({
     pathId: 'G.1',
     slug: 'rapid-switch',
-    note: { action: '连续切换 5 次不同工作树（main-2 ↔ 项目根）', expected: '进程不崩，最终仍有活动工作区' },
+    note: {
+      action: '连续切换 5 次不同工作树（main-2 ↔ 项目根）',
+      expected: '进程不崩，最终仍有活动工作区'
+    },
     action: async () => {
       const count = await page.evaluate(() => {
         const rows = [...document.querySelectorAll('[data-worktree-id]')]
-        const root = rows.find((el) => /infra-tools/.test(el.innerText ?? '') && /主要/.test(el.innerText ?? ''))
-        const perUser = rows.find((el) => /infra-tools/.test(el.innerText ?? '') && /main-2/.test(el.innerText ?? ''))
+        const root = rows.find(
+          (el) => /infra-tools/.test(el.innerText ?? '') && /主要/.test(el.innerText ?? '')
+        )
+        const perUser = rows.find(
+          (el) => /infra-tools/.test(el.innerText ?? '') && /main-2/.test(el.innerText ?? '')
+        )
         const targets = [perUser, root, perUser, root, perUser].filter(Boolean)
-        for (const row of targets) (row.querySelector('[data-worktree-card-surface]') ?? row).click()
+        for (const row of targets)
+          (row.querySelector('[data-worktree-card-surface]') ?? row).click()
         return targets.length
       })
       mem.rapidCount = count
@@ -914,7 +1103,10 @@ try {
     read: async () => {
       const shell = await readShell(page)
       const active = await page.evaluate(
-        () => document.querySelectorAll('[data-worktree-card-active], [data-worktree-id][aria-current="page"]').length
+        () =>
+          document.querySelectorAll(
+            '[data-worktree-card-active], [data-worktree-id][aria-current="page"]'
+          ).length
       )
       return {
         innerText: shell.statusBar,
@@ -925,7 +1117,10 @@ try {
     },
     expect: (a) => a && a.clicks > 0 && a.activeCount >= 1 && a.responsive !== 'loading'
   })
-  addDeviation('G', 'Path G 快速切换在 Path E（Agents/设置）之前执行，避免设置面板遮挡侧栏行；属重放顺序调整。')
+  addDeviation(
+    'G',
+    'Path G 快速切换在 Path E（Agents/设置）之前执行，避免设置面板遮挡侧栏行；属重放顺序调整。'
+  )
 
   // ---------------------------------------------------------------------------
   // Path E: agents / settings / skills
@@ -942,7 +1137,11 @@ try {
     read: async () => {
       const text = await bodyText()
       const denials = await page.evaluate(() =>
-        [...(document.body.innerText ?? '').matchAll(/Method '([^']+)' is not available to cloud sessions/g)].map((m) => m[1])
+        [
+          ...(document.body.innerText ?? '').matchAll(
+            /Method '([^']+)' is not available to cloud sessions/g
+          )
+        ].map((m) => m[1])
       )
       return {
         innerText: text.slice(0, 900),
@@ -953,7 +1152,13 @@ try {
     expect: (a) => a && a.emptyState === true
   })
   if (steps[steps.length - 1]?.assertion?.visibleMethodDenials?.length) {
-    addFinding('D-AGENT-METHOD-DENIAL-UI', 'P2', '智能体面板把 method denial 暴露到 UI', JSON.stringify(steps[steps.length - 1].assertion.visibleMethodDenials), steps[steps.length - 1]?.screenshot)
+    addFinding(
+      'D-AGENT-METHOD-DENIAL-UI',
+      'P2',
+      '智能体面板把 method denial 暴露到 UI',
+      JSON.stringify(steps[steps.length - 1].assertion.visibleMethodDenials),
+      steps[steps.length - 1]?.screenshot
+    )
   }
 
   await doStep({
@@ -979,11 +1184,16 @@ try {
   await doStep({
     pathId: 'E.3',
     slug: 'skills-entry',
-    note: { action: '在设置中打开「分享技能」', expected: '进入 Orca 账号技能分享页（非云会话技能列表）' },
+    note: {
+      action: '在设置中打开「分享技能」',
+      expected: '进入 Orca 账号技能分享页（非云会话技能列表）'
+    },
     action: async () => {
       const clicked = await page.evaluate(() => {
         const target = [...document.querySelectorAll('button, a, [role="button"]')].find(
-          (el) => /分享技能|开放技能|Open skills/i.test(el.innerText ?? '') && (el.offsetParent !== null || el.getClientRects().length > 0)
+          (el) =>
+            /分享技能|开放技能|Open skills/i.test(el.innerText ?? '') &&
+            (el.offsetParent !== null || el.getClientRects().length > 0)
         )
         if (!target) return null
         target.click()
@@ -1012,7 +1222,9 @@ try {
     note: { action: '点击状态栏「登出」', expected: '状态栏回到 登录云端平台，云项目行清空' },
     action: async () => {
       const clicked = await page.evaluate(() => {
-        const btn = [...document.querySelectorAll('[data-status-bar] button')].find((b) => /登出|Sign out/i.test(b.innerText ?? ''))
+        const btn = [...document.querySelectorAll('[data-status-bar] button')].find((b) =>
+          /登出|Sign out/i.test(b.innerText ?? '')
+        )
         if (!btn) return false
         btn.click()
         return true
@@ -1027,7 +1239,9 @@ try {
         innerText: shell.statusBar,
         clicked: mem.logoutClicked ?? null,
         signedIn: shell.signedInSegment,
-        loginEntry: await page.evaluate(() => Boolean(document.querySelector('[data-status-bar] [data-cloud-login-entry]'))),
+        loginEntry: await page.evaluate(() =>
+          Boolean(document.querySelector('[data-status-bar] [data-cloud-login-entry]'))
+        ),
         rowCount: rows.length,
         body: (shell.bodyText ?? '').slice(0, 400)
       }
@@ -1035,13 +1249,22 @@ try {
     expect: (a) => a && a.signedIn === false && a.loginEntry === true && a.rowCount === 0
   })
   if (steps[steps.length - 1]?.result !== 'pass') {
-    addFinding('D-LOGOUT-UI-STALE', 'P1', 'UI 登出后状态栏/项目行未回到未登录态', JSON.stringify(steps[steps.length - 1]?.assertion ?? {}), steps[steps.length - 1]?.screenshot)
+    addFinding(
+      'D-LOGOUT-UI-STALE',
+      'P1',
+      'UI 登出后状态栏/项目行未回到未登录态',
+      JSON.stringify(steps[steps.length - 1]?.assertion ?? {}),
+      steps[steps.length - 1]?.screenshot
+    )
   }
 
   await doStep({
     pathId: 'F.2',
     slug: 'restart-prefill',
-    note: { action: '关闭后同 profile 重启（不带 ORCA_CLOUD_API_URL），打开登录对话框', expected: '地址/用户名预填、密码为空、signed-out' },
+    note: {
+      action: '关闭后同 profile 重启（不带 ORCA_CLOUD_API_URL），打开登录对话框',
+      expected: '地址/用户名预填、密码为空、signed-out'
+    },
     action: async () => {
       try {
         await app.close()
@@ -1073,7 +1296,10 @@ try {
   await doStep({
     pathId: 'F.2b',
     slug: 'relogin-before-restore',
-    note: { action: '在重启后的对话框补密码并登录', expected: '重新 signed-in（为 A3 自动恢复准备会话文件）' },
+    note: {
+      action: '在重启后的对话框补密码并登录',
+      expected: '重新 signed-in（为 A3 自动恢复准备会话文件）'
+    },
     action: async () => {
       await fillLogin(page, { password: 'Passw0rd!' })
       await submitLogin(page)
@@ -1091,7 +1317,10 @@ try {
   await doStep({
     pathId: 'F.3',
     slug: 'auto-restore',
-    note: { action: '关闭后带 ORCA_CLOUD_API_URL 重启', expected: '无需登录对话框，直接 signed-in（restoreSession）' },
+    note: {
+      action: '关闭后带 ORCA_CLOUD_API_URL 重启',
+      expected: '无需登录对话框，直接 signed-in（restoreSession）'
+    },
     action: async () => {
       try {
         await app.close()
@@ -1119,7 +1348,11 @@ try {
   await doStep({
     pathId: 'F.4',
     slug: 'session-revoked',
-    note: { action: '读取会话文件并用 accessToken 调 POST /v1/auth/logout，再调 listProjects/openWorkspace', expected: '操作报 session expired/NOT_SIGNED_IN；UI 不应仍显示已登录' },
+    note: {
+      action:
+        '读取会话文件并用 accessToken 调 POST /v1/auth/logout，再调 listProjects/openWorkspace',
+      expected: '操作报 session expired/NOT_SIGNED_IN；UI 不应仍显示已登录'
+    },
     action: async () => {
       const savedPath = path.join(USER_DATA, 'orca-cloud-session.json')
       const saved = JSON.parse(readFileSync(savedPath, 'utf8'))
@@ -1165,8 +1398,7 @@ try {
         alerts: shell.alerts
       }
     },
-    expect: (a) =>
-      a && a.revoke?.status === 200 && a.uiSignedIn === false
+    expect: (a) => a && a.revoke?.status === 200 && a.uiSignedIn === false
   })
   if (steps[steps.length - 1]?.result !== 'pass') {
     addFinding(
@@ -1217,7 +1449,8 @@ try {
           platform: PLATFORM_URL,
           account: 'zhangsan / Passw0rd!',
           build: 'pnpm build:electron-vite (exit 0) -> out/main/index.js',
-          launch: 'Playwright _electron, ORCA_BACKGROUND_LAUNCH=1, ORCA_E2E_HEADLESS=1, isolated HOME/userData, CDP screenshots only',
+          launch:
+            'Playwright _electron, ORCA_BACKGROUND_LAUNCH=1, ORCA_E2E_HEADLESS=1, isolated HOME/userData, CDP screenshots only',
           repo: REPO,
           pathsSource: 'cloud-platform/scripts/exploratory-r2/desktop-paths.md',
           userDataDir: USER_DATA

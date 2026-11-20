@@ -27,7 +27,9 @@ let logs
 try {
   ;({ app, page, logs } = await launchDesktop({ userDataDir: USER_DATA, extraEnv: cloudTestEnv() }))
   await dismissOnboarding(page)
-  const signedAlready = await page.evaluate(() => !document.querySelector('[data-status-bar] [data-cloud-login-entry]'))
+  const signedAlready = await page.evaluate(
+    () => !document.querySelector('[data-status-bar] [data-cloud-login-entry]')
+  )
   if (!signedAlready) {
     await openLoginDialog(page)
     await fillLogin(page, { address: ADDRESS, username: 'zhangsan', password: 'Passw0rd!' })
@@ -38,11 +40,16 @@ try {
   out.rpc = await page.evaluate(async () => {
     const bridge = window.api.cloud
     const state = await bridge.getState()
-    const project = state.projects.find((p) => p.key === 'infra-tools') ?? state.projects.find((p) => p.key === 'demo-app')
+    const project =
+      state.projects.find((p) => p.key === 'infra-tools') ??
+      state.projects.find((p) => p.key === 'demo-app')
     if (!project) return { projectKeys: state.projects.map((p) => p.key) }
     const opened = await bridge.openWorkspace(project.id)
     const envs = await window.api.runtimeEnvironments.list()
-    const env = envs.find((e) => e.name === project.key) ?? envs.find((e) => e.name === 'infra-tools') ?? envs.find((e) => e.name === 'demo-app')
+    const env =
+      envs.find((e) => e.name === project.key) ??
+      envs.find((e) => e.name === 'infra-tools') ??
+      envs.find((e) => e.name === 'demo-app')
     if (!env) return { projectId: project.id, opened, envNames: envs.map((e) => e.name) }
     const call = (method, params) =>
       window.api.runtimeEnvironments.call({ selector: env.id, method, params, timeoutMs: 25000 })
@@ -77,7 +84,11 @@ try {
   })
   const readText = JSON.stringify(out.rpc?.read?.result ?? '')
   out.echoSeen = readText.includes('RFIX_TERMINAL_CREATE_OK')
-  out.pass = out.rpc?.status?.ok === true && out.rpc?.created?.ok === true && Boolean(out.rpc?.handle) && out.echoSeen
+  out.pass =
+    out.rpc?.status?.ok === true &&
+    out.rpc?.created?.ok === true &&
+    Boolean(out.rpc?.handle) &&
+    out.echoSeen
 } catch (error) {
   out.error = error instanceof Error ? `${error.message}\n${error.stack}` : String(error)
   out.pass = false
@@ -85,14 +96,18 @@ try {
   out.logs = logs?.filter((l) => !l.includes('Electron Security Warning')).slice(-120)
   out.generatedAt = new Date().toISOString()
   writeFileSync(path.join(OUT, 'p0-terminal-create-realstack.json'), JSON.stringify(out, null, 2))
-  try { await app?.close() } catch {}
-  console.log(`${out.pass ? 'PASS' : 'FAIL'} terminal-create ${JSON.stringify({
-    signedIn: out.signedIn,
-    env: out.rpc?.envName,
-    statusOk: out.rpc?.status?.ok,
-    createdOk: out.rpc?.created?.ok,
-    handle: out.rpc?.handle,
-    echoSeen: out.echoSeen,
-    error: out.error
-  })}`)
+  try {
+    await app?.close()
+  } catch {}
+  console.log(
+    `${out.pass ? 'PASS' : 'FAIL'} terminal-create ${JSON.stringify({
+      signedIn: out.signedIn,
+      env: out.rpc?.envName,
+      statusOk: out.rpc?.status?.ok,
+      createdOk: out.rpc?.created?.ok,
+      handle: out.rpc?.handle,
+      echoSeen: out.echoSeen,
+      error: out.error
+    })}`
+  )
 }

@@ -7,15 +7,15 @@
 
 ## 1. 前置条件
 
-| 项 | 值 |
-| --- | --- |
-| 仓库 | `/Users/gongdewei/work/projects/orca`（主 worktree） |
-| 构建 | `pnpm build:electron-vite`（成功后再启动；入口 `out/main/index.js`） |
-| 平台 | `https://127.0.0.1:18787`（**主实例，勿杀**） |
-| 账号 | `zhangsan / Passw0rd!` |
-| 开发 CA | `/Users/gongdewei/orca-local-env/tls/ca.pem` |
-| 宿主 | dev-local-02（host/projects，demo-app、zhangsan-demo），dev-local-03（host2/projects，infra-tools、zhangsan-lab） |
-| 每人 checkout | `<project>/.orca-worktrees/zhangsan/<branch>`（云票据唯一可写根） |
+| 项            | 值                                                                                                                |
+| ------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 仓库          | `/Users/gongdewei/work/projects/orca`（主 worktree）                                                              |
+| 构建          | `pnpm build:electron-vite`（成功后再启动；入口 `out/main/index.js`）                                              |
+| 平台          | `https://127.0.0.1:18787`（**主实例，勿杀**）                                                                     |
+| 账号          | `zhangsan / Passw0rd!`                                                                                            |
+| 开发 CA       | `/Users/gongdewei/orca-local-env/tls/ca.pem`                                                                      |
+| 宿主          | dev-local-02（host/projects，demo-app、zhangsan-demo），dev-local-03（host2/projects，infra-tools、zhangsan-lab） |
+| 每人 checkout | `<project>/.orca-worktrees/zhangsan/<branch>`（云票据唯一可写根）                                                 |
 
 ### 1.1 本地自签平台的环境约束
 
@@ -32,13 +32,13 @@
 从 `out/main/index.js` 启动，隔离 HOME/userData，剥离环境里的 `ORCA_CLOUD_*`，
 再按需注入下面的 env。
 
-| 形态 | extraEnv | 预期 |
-| --- | --- | --- |
-| A0 无 env 裸启动 | 无（仅 CA/TLS 用于后续登录） | 原生 shell 直接出现；状态栏有 `登录云端平台`；对话框地址/用户名空；空表单提交禁用 |
-| A1 手输地址登录 | `ORCA_CLOUD_TLS_INSECURE=1` + `NODE_EXTRA_CA_CERTS` | 输入 `https://127.0.0.1:18787`、zhangsan、密码；错密码显示 `账号或密码不正确。`；正确后状态栏变 `张伟 / 登出` |
-| A2 重启记忆 | 同 A1（不带 `ORCA_CLOUD_API_URL`） | 再次打开登录对话框：地址/用户名预填，密码空，signed-out |
-| A3 自动恢复 | `ORCA_CLOUD_API_URL=https://127.0.0.1:18787` + CA/TLS | 启动后无需对话框直接 signed-in（主进程 restoreSession） |
-| A4 全新 profile | 新建 userData 目录 + 同 A1 | 首次登录路径；工作树目录最完整 |
+| 形态             | extraEnv                                              | 预期                                                                                                          |
+| ---------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| A0 无 env 裸启动 | 无（仅 CA/TLS 用于后续登录）                          | 原生 shell 直接出现；状态栏有 `登录云端平台`；对话框地址/用户名空；空表单提交禁用                             |
+| A1 手输地址登录  | `ORCA_CLOUD_TLS_INSECURE=1` + `NODE_EXTRA_CA_CERTS`   | 输入 `https://127.0.0.1:18787`、zhangsan、密码；错密码显示 `账号或密码不正确。`；正确后状态栏变 `张伟 / 登出` |
+| A2 重启记忆      | 同 A1（不带 `ORCA_CLOUD_API_URL`）                    | 再次打开登录对话框：地址/用户名预填，密码空，signed-out                                                       |
+| A3 自动恢复      | `ORCA_CLOUD_API_URL=https://127.0.0.1:18787` + CA/TLS | 启动后无需对话框直接 signed-in（主进程 restoreSession）                                                       |
+| A4 全新 profile  | 新建 userData 目录 + 同 A1                            | 首次登录路径；工作树目录最完整                                                                                |
 
 固定 profile 约定（便于跨重启）：
 
@@ -91,13 +91,25 @@ RPC 路径（证明宿主/票据正常，也用于覆盖输入与滚动能力）
 // 在渲染端 page.evaluate 内
 const opened = await window.api.cloud.openWorkspace('proj_85ef155c')
 const envs = await window.api.runtimeEnvironments.list()
-const env = envs.find(e => e.name === 'infra-tools')
-const call = (method, params) => window.api.runtimeEnvironments.call({ selector: env.id, method, params, timeoutMs: 25000 })
-const created = await call('terminal.create', { worktree: `path:${opened.workspacePath}`, clientMutationId: 'explore-r2' })
+const env = envs.find((e) => e.name === 'infra-tools')
+const call = (method, params) =>
+  window.api.runtimeEnvironments.call({ selector: env.id, method, params, timeoutMs: 25000 })
+const created = await call('terminal.create', {
+  worktree: `path:${opened.workspacePath}`,
+  clientMutationId: 'explore-r2'
+})
 const handle = created.result.terminal.handle
-await call('terminal.send', { terminal: handle, text: 'pwd && echo ECHO && echo 中文回声', enter: true })
+await call('terminal.send', {
+  terminal: handle,
+  text: 'pwd && echo ECHO && echo 中文回声',
+  enter: true
+})
 await call('terminal.read', { terminal: handle })
-await call('terminal.send', { terminal: handle, text: 'for i in $(seq 1 300); do echo LONG_$i; done', enter: true })
+await call('terminal.send', {
+  terminal: handle,
+  text: 'for i in $(seq 1 300); do echo LONG_$i; done',
+  enter: true
+})
 await call('terminal.read', { terminal: handle, limit: 200000 })
 await call('terminal.close', { terminal: handle })
 ```
@@ -146,18 +158,18 @@ await call('terminal.close', { terminal: handle })
 
 ## 4. 结构化脚本
 
-| 脚本 | 作用 |
-| --- | --- |
-| `desktop-harness.mjs` | 启动、onboarding、登录对话框、shell/worktree 读取、终端与截图工具 |
-| `driver-fresh.mjs` | 全新 profile 首次登录 + 工作树行 + 终端菜单 + Explorer |
-| `driver-fresh2.mjs` | 每人 checkout 的文件树/编辑器/预览/二进制/agent/skills/快速切换 |
-| `driver-final.mjs` | 富文本编辑保存回环、Agents、设置、UI 登出 |
-| `driver-restore.mjs` | `ORCA_CLOUD_API_URL` 自动恢复 + UI 登出 |
-| `driver-boundary.mjs` | 并发/重复打开 + 平台会话吊销 |
-| `driver-terminal-rpc2.mjs` | 每人 checkout 上 `terminal.*` RPC 的输入/中文/长输出证明 |
-| `driver-terminal-ui2.mjs` | 重启后侧栏目录与 UI 终端缺陷复现 |
-| `driver-login.mjs` / `driver-activate.mjs` | 首轮登录错误态 / 重启预填 |
-| `driver-smoke.mjs` / `driver-rowdom.mjs` / `driver-runtime-probe.mjs` | 启动、DOM、桥接诊断 |
+| 脚本                                                                  | 作用                                                              |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `desktop-harness.mjs`                                                 | 启动、onboarding、登录对话框、shell/worktree 读取、终端与截图工具 |
+| `driver-fresh.mjs`                                                    | 全新 profile 首次登录 + 工作树行 + 终端菜单 + Explorer            |
+| `driver-fresh2.mjs`                                                   | 每人 checkout 的文件树/编辑器/预览/二进制/agent/skills/快速切换   |
+| `driver-final.mjs`                                                    | 富文本编辑保存回环、Agents、设置、UI 登出                         |
+| `driver-restore.mjs`                                                  | `ORCA_CLOUD_API_URL` 自动恢复 + UI 登出                           |
+| `driver-boundary.mjs`                                                 | 并发/重复打开 + 平台会话吊销                                      |
+| `driver-terminal-rpc2.mjs`                                            | 每人 checkout 上 `terminal.*` RPC 的输入/中文/长输出证明          |
+| `driver-terminal-ui2.mjs`                                             | 重启后侧栏目录与 UI 终端缺陷复现                                  |
+| `driver-login.mjs` / `driver-activate.mjs`                            | 首轮登录错误态 / 重启预填                                         |
+| `driver-smoke.mjs` / `driver-rowdom.mjs` / `driver-runtime-probe.mjs` | 启动、DOM、桥接诊断                                               |
 
 运行示例：
 

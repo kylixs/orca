@@ -91,3 +91,12 @@ node cloud-platform/scripts/monitor-system-resources.mjs \
 - **退出码分类**（`classifyRelayExitCode`）：`0 ok`、`64 usage`、`65 unavailable`、`66 checksum`、`67 manifest`、`68 platform-unreachable`、`78 config`、其余 `other`（含超时 124 与启动失败 70）。
 - **skip 门禁**：`runRelayInstallInContainer()` 在 `harness.available=false` 时不执行命令，返回 `exitCode=null / classification=skipped`；`collectRelayEvidence()` 据此写 `verdict=null`，不抛错、不计失败。
 - **自动校验**：`collectRelayEvidence()` 写盘后自动跑 `validate-evidence.mjs <dir> --check-generated-at --json`，结果写入 `summary.validation` 与日志；失败只 `console.warn`，不阻断证据落盘。
+
+## 容器正向 e2e（2026-11-17 U183 R13c）
+
+用例：`cloud-platform/test/e2e/u183-r13c-container-forward.e2e.test.ts`。平台随机端口 + R13a forwarder，管理员签发一次性下载令牌，容器执行与向导一致的 one-liner。
+
+- **Node 门禁**：镜像（`jlc-deb12:rust`）内 `node --version` 必须 ≥22.18；否则 `verdict=null` / `skipReason=node-unavailable`，证据仍落盘并通过 `validate-evidence`。禁止 stub 冒充。
+- **决定性断言（6）**：安装 exit 0；平台 `relays` 记录 `online=true` 且 `installNonce` 与容器 `relay.env` 一致；`current` = `releases/<bundleSha>`；`relay.pid` 存活且 `/proc/<pid>/cmdline` 含 `relay.ts`；`relay.log` 无 unhandled/uncaught；`summary.verdict=pass` 且 `validation.ok`。
+- **证据**：`cloud-platform/evidence/u183-r13c-<ts>/`，含 `node-probe.json`/`node-probe.raw.json`、`relay-env.redacted.txt`（内部令牌脱敏）、`relays.json`、`current-link.txt`、`releases-tree.txt`、`process.json`、`relay-log-tail.txt` 及 R13b 的 `summary.json`/`results.json`/逐步日志。
+- **已知正向路径阻塞**（Node 可用时才触发）：生成器对非 loopback http（`host.docker.internal`）返回 400 `RELAY_BUNDLE_INSECURE_URL`；安装脚本仍预检 `$ORCA_RELAY_ROOT/cloud-platform/apps/relay/src/relay.ts`，与 §6.2「无仓库 checkout」冲突。

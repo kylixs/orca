@@ -441,7 +441,9 @@ export function attachExtraction(ui, { page, baseUrl, evidenceDir, targetLocator
   async function compareWithPrototype(pageId = 'current', opts = {}) {
     return step(`compareWithPrototype:${pageId}`, async () => {
       const browser = opts.browser ?? page.context().browser()
-      if (!browser) {throw new Error('compareWithPrototype needs a Playwright browser')}
+      if (!browser) {
+        throw new Error('compareWithPrototype needs a Playwright browser')
+      }
       const outDir = opts.outDir ?? path.join(evidenceDir, 'prototype-diff')
       const collection = await collectComparison({
         browser,

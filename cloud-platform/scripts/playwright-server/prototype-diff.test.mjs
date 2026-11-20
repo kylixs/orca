@@ -106,7 +106,12 @@ function blankSurface(overrides = {}) {
   }
 }
 
-function makeCollection({ prototypeSurfaces, actualSurfaces, prototypeReach = {}, actualReach = {} }) {
+function makeCollection({
+  prototypeSurfaces,
+  actualSurfaces,
+  prototypeReach = {},
+  actualReach = {}
+}) {
   return {
     generatedAt: '2026-11-15T00:00:00.000Z',
     prototypeUrl: 'file:///prototype.html',
@@ -172,15 +177,51 @@ test('diff class field: alias rename + selector and required drift', () => {
   const prototype = blankSurface({
     surface: 'login',
     fields: [
-      { label: '主机管理', id: 'hostMgmt', name: 'host', type: 'text', required: false, disabled: false, readonly: false, placeholder: null },
-      { label: '域账号', id: 'loginAccount', name: 'username', type: 'text', required: false, disabled: false, readonly: false, placeholder: '域账号' }
+      {
+        label: '主机管理',
+        id: 'hostMgmt',
+        name: 'host',
+        type: 'text',
+        required: false,
+        disabled: false,
+        readonly: false,
+        placeholder: null
+      },
+      {
+        label: '域账号',
+        id: 'loginAccount',
+        name: 'username',
+        type: 'text',
+        required: false,
+        disabled: false,
+        readonly: false,
+        placeholder: '域账号'
+      }
     ]
   })
   const actual = blankSurface({
     surface: 'login',
     fields: [
-      { label: '主机', id: 'host', name: 'host', type: 'text', required: false, disabled: false, readonly: false, placeholder: null },
-      { label: '域账号', id: 'username', name: 'username', type: 'text', required: true, disabled: false, readonly: false, placeholder: '域账号' }
+      {
+        label: '主机',
+        id: 'host',
+        name: 'host',
+        type: 'text',
+        required: false,
+        disabled: false,
+        readonly: false,
+        placeholder: null
+      },
+      {
+        label: '域账号',
+        id: 'username',
+        name: 'username',
+        type: 'text',
+        required: true,
+        disabled: false,
+        readonly: false,
+        placeholder: '域账号'
+      }
     ]
   })
   const diff = diffInventories(

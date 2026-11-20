@@ -80,7 +80,7 @@ try {
     await shoot(page, '33-terminal-chinese.png')
 
     // Long output: scrollback must hold the tail.
-    await typeInTerminal(page, "for i in $(seq 1 400); do echo LONG_LINE_$i; done")
+    await typeInTerminal(page, 'for i in $(seq 1 400); do echo LONG_LINE_$i; done')
     await wait(8000)
     out.probes.longOutput = await terminalText(page)
     out.probes.longTailSeen = (out.probes.longOutput ?? '').includes('LONG_LINE_400')
@@ -103,7 +103,8 @@ try {
     // Close the active tab via its close control if discoverable.
     out.probes.closedTab = await page.evaluate(() => {
       const tabs = [...document.querySelectorAll('[role="tab"]')]
-      const active = tabs.find((t) => t.getAttribute('aria-selected') === 'true') ?? tabs[tabs.length - 1]
+      const active =
+        tabs.find((t) => t.getAttribute('aria-selected') === 'true') ?? tabs[tabs.length - 1]
       if (!active) return null
       const close = active.querySelector('[aria-label*="关闭"], [aria-label*="Close"], button')
       if (!close) return { noClose: true, tab: active.textContent?.slice(0, 60) }
@@ -120,22 +121,40 @@ try {
   out.logs = logs?.slice(0, 200) ?? []
   out.finishedAt = new Date().toISOString()
   writeFileSync(path.join(EVIDENCE, 'terminal-stage.json'), JSON.stringify(out, null, 2))
-  try { await page?.screenshot({ path: path.join(EVIDENCE, 'screenshots', '39-terminal-final.png') }) } catch {}
-  try { await app?.close() } catch {}
-  console.log(JSON.stringify({
-    error: out.error,
-    signedIn: out.probes.signedIn,
-    clicked: out.probes.clicked,
-    afterActivate: { terms: out.probes.afterActivate?.terminals, tabs: out.probes.afterActivate?.tabs, body: (out.probes.afterActivate?.bodyText ?? '').slice(0, 400) },
-    newTabClicked: out.probes.newTabClicked,
-    afterNewTab: { terms: out.probes.afterNewTab?.terminals, tabs: out.probes.afterNewTab?.tabs, body: (out.probes.afterNewTab?.bodyText ?? '').slice(0, 500) },
-    terminalFocused: out.probes.terminalFocused,
-    echoTail: JSON.stringify((out.probes.echo ?? '').slice(-400)),
-    chineseTail: JSON.stringify((out.probes.chinese ?? '').slice(-400)),
-    longTailSeen: out.probes.longTailSeen,
-    longTail: JSON.stringify((out.probes.scrolledBottom ?? '').slice(-600)),
-    terminalsAfterSecond: out.probes.terminalsAfterSecond,
-    afterCloseTabs: out.probes.afterClose?.tabs,
-    closedTab: out.probes.closedTab
-  }, null, 2))
+  try {
+    await page?.screenshot({ path: path.join(EVIDENCE, 'screenshots', '39-terminal-final.png') })
+  } catch {}
+  try {
+    await app?.close()
+  } catch {}
+  console.log(
+    JSON.stringify(
+      {
+        error: out.error,
+        signedIn: out.probes.signedIn,
+        clicked: out.probes.clicked,
+        afterActivate: {
+          terms: out.probes.afterActivate?.terminals,
+          tabs: out.probes.afterActivate?.tabs,
+          body: (out.probes.afterActivate?.bodyText ?? '').slice(0, 400)
+        },
+        newTabClicked: out.probes.newTabClicked,
+        afterNewTab: {
+          terms: out.probes.afterNewTab?.terminals,
+          tabs: out.probes.afterNewTab?.tabs,
+          body: (out.probes.afterNewTab?.bodyText ?? '').slice(0, 500)
+        },
+        terminalFocused: out.probes.terminalFocused,
+        echoTail: JSON.stringify((out.probes.echo ?? '').slice(-400)),
+        chineseTail: JSON.stringify((out.probes.chinese ?? '').slice(-400)),
+        longTailSeen: out.probes.longTailSeen,
+        longTail: JSON.stringify((out.probes.scrolledBottom ?? '').slice(-600)),
+        terminalsAfterSecond: out.probes.terminalsAfterSecond,
+        afterCloseTabs: out.probes.afterClose?.tabs,
+        closedTab: out.probes.closedTab
+      },
+      null,
+      2
+    )
+  )
 }

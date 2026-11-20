@@ -74,7 +74,9 @@ try {
 } finally {
   out.logs = logs?.filter((l) => !l.includes('Electron Security Warning')).slice(0, 200)
   writeFileSync(path.join(EVIDENCE, 'terminal-rpc2-probe.json'), JSON.stringify(out, null, 2))
-  try { await app?.close() } catch {}
+  try {
+    await app?.close()
+  } catch {}
   const readText =
     typeof out.rpc?.read?.result === 'string'
       ? out.rpc.read.result

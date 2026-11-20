@@ -37,14 +37,18 @@ try {
   out.probes.shellAfterActivate = await readShell(page)
   // Open the + menu and list items.
   out.probes.menuOpened = await page.evaluate(() => {
-    const btn = [...document.querySelectorAll('button[aria-label="新标签页"], button[aria-label="New tab"]')].find((b) => b.getClientRects().length)
+    const btn = [
+      ...document.querySelectorAll('button[aria-label="新标签页"], button[aria-label="New tab"]')
+    ].find((b) => b.getClientRects().length)
     if (!btn) return false
     btn.click()
     return true
   })
   await wait(1200)
   out.probes.menuItems = await page.evaluate(() => {
-    return [...document.querySelectorAll('[role="menuitem"], [data-slot="dropdown-menu-item"]')].map((el) => ({
+    return [
+      ...document.querySelectorAll('[role="menuitem"], [data-slot="dropdown-menu-item"]')
+    ].map((el) => ({
       text: (el.innerText ?? '').replace(/\s+/g, ' ').trim(),
       testid: el.getAttribute('data-testid'),
       disabled: el.getAttribute('data-disabled') !== null
@@ -52,7 +56,9 @@ try {
   })
   await shoot(page, '40-newtab-menu.png')
   const selected = await page.evaluate(() => {
-    const items = [...document.querySelectorAll('[role="menuitem"], [data-slot="dropdown-menu-item"]')]
+    const items = [
+      ...document.querySelectorAll('[role="menuitem"], [data-slot="dropdown-menu-item"]')
+    ]
     const target = items.find((el) => /终端|Terminal/i.test(el.innerText ?? ''))
     if (!target) return null
     target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
@@ -75,16 +81,28 @@ try {
 } finally {
   out.logs = logs?.filter((l) => !l.includes('Electron Security Warning')).slice(0, 200)
   writeFileSync(path.join(EVIDENCE, 'menuprobe-stage.json'), JSON.stringify(out, null, 2))
-  try { await app?.close() } catch {}
-  console.log(JSON.stringify({
-    error: out.error,
-    clicked: out.probes.clicked,
-    menuOpened: out.probes.menuOpened,
-    menuItems: out.probes.menuItems,
-    selectedMenu: out.probes.selectedMenu,
-    afterSelect: { terms: out.probes.afterSelect?.terminals, tabs: out.probes.afterSelect?.tabs, body: (out.probes.afterSelect?.bodyText ?? '').slice(0, 600) },
-    focused: out.probes.focused,
-    termTail: (out.probes.term ?? '').slice(-400),
-    logs: out.logs
-  }, null, 2))
+  try {
+    await app?.close()
+  } catch {}
+  console.log(
+    JSON.stringify(
+      {
+        error: out.error,
+        clicked: out.probes.clicked,
+        menuOpened: out.probes.menuOpened,
+        menuItems: out.probes.menuItems,
+        selectedMenu: out.probes.selectedMenu,
+        afterSelect: {
+          terms: out.probes.afterSelect?.terminals,
+          tabs: out.probes.afterSelect?.tabs,
+          body: (out.probes.afterSelect?.bodyText ?? '').slice(0, 600)
+        },
+        focused: out.probes.focused,
+        termTail: (out.probes.term ?? '').slice(-400),
+        logs: out.logs
+      },
+      null,
+      2
+    )
+  )
 }

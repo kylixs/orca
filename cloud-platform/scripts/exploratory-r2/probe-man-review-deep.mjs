@@ -58,7 +58,10 @@ try {
     return {
       target: target.key,
       other: other.key,
-      concurrent: await Promise.all([bridge.openWorkspace(target.id), bridge.openWorkspace(target.id)]),
+      concurrent: await Promise.all([
+        bridge.openWorkspace(target.id),
+        bridge.openWorkspace(target.id)
+      ]),
       different: await bridge.openWorkspace(other.id),
       again: await bridge.openWorkspace(target.id)
     }
@@ -80,7 +83,9 @@ try {
     await wait(1200)
   }
   await page.evaluate(() => {
-    const item = [...document.querySelectorAll('[role="menuitem"]')].find((el) => /新终端|New Terminal/i.test(el.innerText ?? ''))
+    const item = [...document.querySelectorAll('[role="menuitem"]')].find((el) =>
+      /新终端|New Terminal/i.test(el.innerText ?? '')
+    )
     if (!item) return
     item.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
     item.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }))
@@ -93,10 +98,14 @@ try {
     return {
       xtermCount: document.querySelectorAll('.xterm').length,
       rowsDivs: wrapper ? wrapper.querySelectorAll('.xterm-rows > div').length : 0,
-      accessibilityRows: wrapper ? wrapper.querySelectorAll('.xterm-accessibility-tree > div').length : 0,
+      accessibilityRows: wrapper
+        ? wrapper.querySelectorAll('.xterm-accessibility-tree > div').length
+        : 0,
       helperTextarea: wrapper ? wrapper.querySelectorAll('.xterm-helper-textarea').length : 0,
       xtermInnerText: wrapper ? (wrapper.innerText ?? '').slice(-500) : '',
-      screenTextContent: wrapper ? (wrapper.querySelector('.xterm-screen')?.textContent ?? '').slice(-500) : ''
+      screenTextContent: wrapper
+        ? (wrapper.querySelector('.xterm-screen')?.textContent ?? '').slice(-500)
+        : ''
     }
   })
   result.focused = await focusTerminal(page)
@@ -108,8 +117,14 @@ try {
   result.termDomAfter = await page.evaluate(() => {
     const wrappers = [...document.querySelectorAll('.xterm')]
     const wrapper = wrappers[wrappers.length - 1]
-    const rowTexts = wrapper ? [...wrapper.querySelectorAll('.xterm-rows > div')].map((r) => r.textContent ?? '') : []
-    const a11y = wrapper ? [...wrapper.querySelectorAll('.xterm-accessibility-tree > div')].map((r) => r.textContent ?? '') : []
+    const rowTexts = wrapper
+      ? [...wrapper.querySelectorAll('.xterm-rows > div')].map((r) => r.textContent ?? '')
+      : []
+    const a11y = wrapper
+      ? [...wrapper.querySelectorAll('.xterm-accessibility-tree > div')].map(
+          (r) => r.textContent ?? ''
+        )
+      : []
     return {
       xtermCount: wrappers.length,
       rowTexts: rowTexts.slice(-20),
@@ -129,28 +144,34 @@ try {
   try {
     await app?.close()
   } catch {}
-  console.log(JSON.stringify({
-    error: result.error,
-    signedIn: result.signedIn,
-    rowsBefore: result.rowsBefore?.length,
-    rowsAfter: result.rowsAfter?.length,
-    dupIdsAfter: result.rowsAfter
-      ? result.rowsAfter.length - new Set(result.rowsAfter.map((r) => r.id)).size
-      : null,
-    duplicateDetails: result.rowsAfter
-      ? Object.entries(
-          result.rowsAfter.reduce((acc, r) => {
-            acc[r.id] = acc[r.id] ?? []
-            acc[r.id].push({ rowKey: r.rowKey, hostIdentity: r.hostIdentity })
-            return acc
-          }, {})
-        )
-          .filter(([, v]) => v.length > 1)
-          .map(([id, v]) => ({ id, occurrences: v }))
-      : null,
-    focused: result.focused,
-    harnessTerminalTextTail: (result.harnessTerminalText ?? '').slice(-300),
-    termDomBefore: result.termDomBefore,
-    termDomAfter: result.termDomAfter
-  }, null, 2))
+  console.log(
+    JSON.stringify(
+      {
+        error: result.error,
+        signedIn: result.signedIn,
+        rowsBefore: result.rowsBefore?.length,
+        rowsAfter: result.rowsAfter?.length,
+        dupIdsAfter: result.rowsAfter
+          ? result.rowsAfter.length - new Set(result.rowsAfter.map((r) => r.id)).size
+          : null,
+        duplicateDetails: result.rowsAfter
+          ? Object.entries(
+              result.rowsAfter.reduce((acc, r) => {
+                acc[r.id] = acc[r.id] ?? []
+                acc[r.id].push({ rowKey: r.rowKey, hostIdentity: r.hostIdentity })
+                return acc
+              }, {})
+            )
+              .filter(([, v]) => v.length > 1)
+              .map(([id, v]) => ({ id, occurrences: v }))
+          : null,
+        focused: result.focused,
+        harnessTerminalTextTail: (result.harnessTerminalText ?? '').slice(-300),
+        termDomBefore: result.termDomBefore,
+        termDomAfter: result.termDomAfter
+      },
+      null,
+      2
+    )
+  )
 }

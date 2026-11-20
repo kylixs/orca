@@ -39,15 +39,33 @@ try {
     const online = state.projects.filter((p) => p.hostStatus === 'online')
     const target = online.find((p) => p.key === 'infra-tools') ?? online[0]
     const other = online.find((p) => p.id !== target.id) ?? target
-    const concurrent = await Promise.all([bridge.openWorkspace(target.id), bridge.openWorkspace(target.id)])
+    const concurrent = await Promise.all([
+      bridge.openWorkspace(target.id),
+      bridge.openWorkspace(target.id)
+    ])
     const different = await bridge.openWorkspace(other.id)
     const again = await bridge.openWorkspace(target.id)
     return {
       target: target.key,
       other: other.key,
-      concurrent: concurrent.map((r) => ({ ok: r.ok, code: r.code, workspacePath: r.workspacePath, route: r.route })),
-      different: { ok: different.ok, code: different.code, workspacePath: different.workspacePath, route: different.route },
-      again: { ok: again.ok, code: again.code, workspacePath: again.workspacePath, route: again.route }
+      concurrent: concurrent.map((r) => ({
+        ok: r.ok,
+        code: r.code,
+        workspacePath: r.workspacePath,
+        route: r.route
+      })),
+      different: {
+        ok: different.ok,
+        code: different.code,
+        workspacePath: different.workspacePath,
+        route: different.route
+      },
+      again: {
+        ok: again.ok,
+        code: again.code,
+        workspacePath: again.workspacePath,
+        route: again.route
+      }
     }
   })
   await wait(4000)
@@ -94,15 +112,32 @@ try {
 } finally {
   out.logs = logs?.filter((l) => !l.includes('Electron Security Warning')).slice(0, 300)
   writeFileSync(path.join(EVIDENCE, 'boundary-stage.json'), JSON.stringify(out, null, 2))
-  try { await app?.close() } catch {}
-  console.log(JSON.stringify({
-    error: out.error,
-    autoSignedIn: out.probes.autoSignedIn,
-    opens: out.probes.opens,
-    afterOpens: { alerts: out.probes.afterOpens?.alerts, body: (out.probes.afterOpens?.bodyText ?? '').slice(0, 400) },
-    revoke: out.probes.revoke,
-    afterRevokeCall: out.probes.afterRevokeCall,
-    afterRevoke: { signedIn: out.probes.afterRevoke?.signedInSegment, statusBar: out.probes.afterRevoke?.statusBar, notices: out.probes.afterRevoke?.statuses, alerts: out.probes.afterRevoke?.alerts, body: (out.probes.afterRevoke?.bodyText ?? '').slice(0, 800) },
-    logs: out.logs
-  }, null, 2))
+  try {
+    await app?.close()
+  } catch {}
+  console.log(
+    JSON.stringify(
+      {
+        error: out.error,
+        autoSignedIn: out.probes.autoSignedIn,
+        opens: out.probes.opens,
+        afterOpens: {
+          alerts: out.probes.afterOpens?.alerts,
+          body: (out.probes.afterOpens?.bodyText ?? '').slice(0, 400)
+        },
+        revoke: out.probes.revoke,
+        afterRevokeCall: out.probes.afterRevokeCall,
+        afterRevoke: {
+          signedIn: out.probes.afterRevoke?.signedInSegment,
+          statusBar: out.probes.afterRevoke?.statusBar,
+          notices: out.probes.afterRevoke?.statuses,
+          alerts: out.probes.afterRevoke?.alerts,
+          body: (out.probes.afterRevoke?.bodyText ?? '').slice(0, 800)
+        },
+        logs: out.logs
+      },
+      null,
+      2
+    )
+  )
 }

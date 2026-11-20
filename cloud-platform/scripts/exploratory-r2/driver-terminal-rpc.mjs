@@ -29,50 +29,55 @@ try {
   await submitLogin(page)
   out.signedIn = await waitSignedIn(page)
   await page.waitForTimeout(9000)
-  out.rpc = await page.evaluate(async ({ worktree }) => {
-    const envs = await window.api.runtimeEnvironments.list()
-    const env = envs.find((e) => e.name === 'infra-tools')
-    const call = (method, params) =>
-      window.api.runtimeEnvironments.call({ selector: env.id, method, params, timeoutMs: 20000 })
-    const result = { envId: env.id }
-    result.status = await call('status.get', {})
-    result.created = await call('terminal.create', {
-      worktree,
-      clientMutationId: 'explore-r2-terminal-1'
-    })
-    const handle =
-      result.created?.result?.terminal?.terminal ??
-      result.created?.result?.terminal ??
-      result.created?.terminal?.terminal ??
-      result.created?.terminal ??
-      (typeof result.created?.result === 'string' ? result.created.result : null)
-    result.handle = typeof handle === 'string' ? handle : null
-    result.list = await call('terminal.list', { worktree })
-    if (result.handle) {
-      result.send = await call('terminal.send', {
-        terminal: result.handle,
-        text: 'echo DIRECT_RPC_ECHO_OK && echo 中文直连回声',
-        enter: true
+  out.rpc = await page.evaluate(
+    async ({ worktree }) => {
+      const envs = await window.api.runtimeEnvironments.list()
+      const env = envs.find((e) => e.name === 'infra-tools')
+      const call = (method, params) =>
+        window.api.runtimeEnvironments.call({ selector: env.id, method, params, timeoutMs: 20000 })
+      const result = { envId: env.id }
+      result.status = await call('status.get', {})
+      result.created = await call('terminal.create', {
+        worktree,
+        clientMutationId: 'explore-r2-terminal-1'
       })
-      await new Promise((r) => setTimeout(r, 2500))
-      result.read = await call('terminal.read', { terminal: result.handle })
-      result.sendLong = await call('terminal.send', {
-        terminal: result.handle,
-        text: 'for i in $(seq 1 200); do echo RPC_LONG_$i; done',
-        enter: true
-      })
-      await new Promise((r) => setTimeout(r, 3000))
-      result.readLong = await call('terminal.read', { terminal: result.handle })
-      result.close = await call('terminal.close', { terminal: result.handle })
-    }
-    return result
-  }, { worktree: WORKTREE_SELECTOR })
+      const handle =
+        result.created?.result?.terminal?.terminal ??
+        result.created?.result?.terminal ??
+        result.created?.terminal?.terminal ??
+        result.created?.terminal ??
+        (typeof result.created?.result === 'string' ? result.created.result : null)
+      result.handle = typeof handle === 'string' ? handle : null
+      result.list = await call('terminal.list', { worktree })
+      if (result.handle) {
+        result.send = await call('terminal.send', {
+          terminal: result.handle,
+          text: 'echo DIRECT_RPC_ECHO_OK && echo 中文直连回声',
+          enter: true
+        })
+        await new Promise((r) => setTimeout(r, 2500))
+        result.read = await call('terminal.read', { terminal: result.handle })
+        result.sendLong = await call('terminal.send', {
+          terminal: result.handle,
+          text: 'for i in $(seq 1 200); do echo RPC_LONG_$i; done',
+          enter: true
+        })
+        await new Promise((r) => setTimeout(r, 3000))
+        result.readLong = await call('terminal.read', { terminal: result.handle })
+        result.close = await call('terminal.close', { terminal: result.handle })
+      }
+      return result
+    },
+    { worktree: WORKTREE_SELECTOR }
+  )
 } catch (error) {
   out.error = error instanceof Error ? `${error.message}\n${error.stack}` : String(error)
 } finally {
   out.logs = logs?.filter((l) => !l.includes('Electron Security Warning')).slice(0, 200)
   writeFileSync(path.join(EVIDENCE, 'terminal-rpc-probe.json'), JSON.stringify(out, null, 2))
-  try { await app?.close() } catch {}
+  try {
+    await app?.close()
+  } catch {}
   console.log(
     JSON.stringify(
       {

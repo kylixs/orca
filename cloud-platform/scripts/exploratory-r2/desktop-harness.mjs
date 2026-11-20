@@ -44,7 +44,10 @@ export async function launchDesktop({ userDataDir, extraEnv = {}, headless = tru
   mkdirSync(userDataDir, { recursive: true })
   mkdirSync(SHOTS, { recursive: true })
   const cloudKeys = Object.keys(process.env).filter(
-    (k) => k.startsWith('ORCA_CLOUD_') || k === 'ORCA_DEFAULT_PLATFORM_URL' || k === 'REMOTE_DEBUGGING_PORT'
+    (k) =>
+      k.startsWith('ORCA_CLOUD_') ||
+      k === 'ORCA_DEFAULT_PLATFORM_URL' ||
+      k === 'REMOTE_DEBUGGING_PORT'
   )
   const isolation = createElectronHomeIsolation({
     inheritedEnv: cleanEnv(cloudKeys),
@@ -77,7 +80,9 @@ export async function launchDesktop({ userDataDir, extraEnv = {}, headless = tru
 
 export async function dismissOnboarding(page) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const present = await page.evaluate(() => Boolean(document.querySelector('[data-onboarding-overlay]')))
+    const present = await page.evaluate(() =>
+      Boolean(document.querySelector('[data-onboarding-overlay]'))
+    )
     if (!present) return true
     await page.keyboard.press('Escape')
     await page.waitForTimeout(900)
@@ -100,7 +105,9 @@ export async function dismissOnboarding(page) {
 }
 
 export async function openLoginDialog(page, timeoutMs = 20_000) {
-  await page.evaluate(() => document.querySelector('[data-status-bar] [data-cloud-login-entry]')?.click())
+  await page.evaluate(() =>
+    document.querySelector('[data-status-bar] [data-cloud-login-entry]')?.click()
+  )
   await page.waitForSelector('[data-slot="dialog-content"] #cloud-username', { timeout: timeoutMs })
   await page.waitForTimeout(400)
 }
@@ -205,7 +212,8 @@ export async function clickWorktree(page, fragments) {
 export async function focusTerminal(page) {
   return page.evaluate(() => {
     const textareas = [...document.querySelectorAll('.xterm-helper-textarea')]
-    const textarea = textareas.find((el) => el.offsetParent !== null) ?? textareas[textareas.length - 1]
+    const textarea =
+      textareas.find((el) => el.offsetParent !== null) ?? textareas[textareas.length - 1]
     if (!textarea) return false
     textarea.focus()
     return true
@@ -214,7 +222,9 @@ export async function focusTerminal(page) {
 
 export async function terminalText(page) {
   return page.evaluate(() => {
-    const wrappers = [...document.querySelectorAll('.xterm')].filter((el) => el.offsetParent !== null)
+    const wrappers = [...document.querySelectorAll('.xterm')].filter(
+      (el) => el.offsetParent !== null
+    )
     const wrapper = wrappers[wrappers.length - 1] ?? null
     if (!wrapper) return ''
     const rows = [...wrapper.querySelectorAll('.xterm-rows > div')]
@@ -244,9 +254,21 @@ export async function dumpUi(page) {
         }))
         .filter((b) => b.text || b.aria || b.title || b.testid)
         .slice(0, 120),
-      testids: [...new Set([...document.querySelectorAll('[data-testid]')].map((el) => el.getAttribute('data-testid')))].slice(0, 150),
-      ariaLabels: [...new Set([...document.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label')))].slice(0, 100),
-      roles: [...document.querySelectorAll('[role]')].map((el) => `${el.getAttribute('role')}:${text(el).slice(0, 40)}`).slice(0, 80)
+      testids: [
+        ...new Set(
+          [...document.querySelectorAll('[data-testid]')].map((el) =>
+            el.getAttribute('data-testid')
+          )
+        )
+      ].slice(0, 150),
+      ariaLabels: [
+        ...new Set(
+          [...document.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label'))
+        )
+      ].slice(0, 100),
+      roles: [...document.querySelectorAll('[role]')]
+        .map((el) => `${el.getAttribute('role')}:${text(el).slice(0, 40)}`)
+        .slice(0, 80)
     }
   })
 }

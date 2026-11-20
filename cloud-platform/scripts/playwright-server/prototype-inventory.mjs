@@ -67,7 +67,9 @@ export async function extractDomInventory(target, options = {}) {
         .trim()
     const text = (el) => norm(el?.innerText ?? el?.textContent ?? '')
     const cleanLabel = (el) => {
-      if (!el) {return ''}
+      if (!el) {
+        return ''
+      }
       const clone = el.cloneNode(true)
       for (const noise of clone.querySelectorAll('.section-count, .nav-count, .badge, .count')) {
         noise.remove()
@@ -75,7 +77,9 @@ export async function extractDomInventory(target, options = {}) {
       return text(clone)
     }
     const isVisible = (el) => {
-      if (!el || el.hidden) {return false}
+      if (!el || el.hidden) {
+        return false
+      }
       const rect = el.getBoundingClientRect()
       const style = getComputedStyle(el)
       return (
@@ -92,7 +96,9 @@ export async function extractDomInventory(target, options = {}) {
       const out = []
       for (const item of items) {
         const key = keyFn(item)
-        if (seen.has(key)) {continue}
+        if (seen.has(key)) {
+          continue
+        }
         seen.add(key)
         out.push(item)
       }
@@ -108,21 +114,33 @@ export async function extractDomInventory(target, options = {}) {
           ''
       )
     const labelFor = (el) => {
-      if (el.getAttribute('aria-label')) {return norm(el.getAttribute('aria-label'))}
+      if (el.getAttribute('aria-label')) {
+        return norm(el.getAttribute('aria-label'))
+      }
       if (el.id) {
         const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(el.id) : el.id
         const label = document.querySelector(`label[for="${escaped}"]`)
-        if (label) {return text(label)}
+        if (label) {
+          return text(label)
+        }
       }
       const wrap = el.closest('label')
-      if (wrap) {return norm(wrap.innerText || wrap.textContent)}
+      if (wrap) {
+        return norm(wrap.innerText || wrap.textContent)
+      }
       return norm(el.getAttribute('placeholder') || el.name || el.id || '')
     }
     const shapeOf = (value) => {
       const v = norm(value)
-      if (!v) {return 'empty'}
-      if (/^[\d,.\s/]+$/.test(v)) {return 'number'}
-      if (/\d/.test(v)) {return 'text-with-number'}
+      if (!v) {
+        return 'empty'
+      }
+      if (/^[\d,.\s/]+$/.test(v)) {
+        return 'number'
+      }
+      if (/\d/.test(v)) {
+        return 'text-with-number'
+      }
       return 'text'
     }
     const loginMode =
@@ -137,11 +155,7 @@ export async function extractDomInventory(target, options = {}) {
     const scope = loginMode ? document.body : (visiblePage ?? projectShell ?? bodyRoot)
 
     let title = loginMode
-      ? text(
-          document.querySelector(
-            '#loginScreen:not([hidden]) h1, #view-login:not([hidden]) h1'
-          )
-        )
+      ? text(document.querySelector('#loginScreen:not([hidden]) h1, #view-login:not([hidden]) h1'))
       : text(scope.querySelector('h1'))
     const overlayTitle = text(document.querySelector('#workspaceOverlay .workspace-title'))
     title = overlayTitle || title
@@ -162,9 +176,13 @@ export async function extractDomInventory(target, options = {}) {
     const groupOf = (el) => {
       let node = el.previousElementSibling
       while (node) {
-        if (node.matches('.nav-group-label, .nav-label')) {return text(node)}
+        if (node.matches('.nav-group-label, .nav-label')) {
+          return text(node)
+        }
         const inner = node.querySelector?.('.nav-group-label, .nav-label')
-        if (inner) {return text(inner)}
+        if (inner) {
+          return text(inner)
+        }
         node = node.previousElementSibling
       }
       return ''
@@ -180,10 +198,18 @@ export async function extractDomInventory(target, options = {}) {
     }))
 
     const kindOf = (heading) => {
-      if (heading.closest('.stat-grid, .stat-card')) {return 'stat'}
-      if (heading.closest('table, .table-card, .table-wrap')) {return 'table-section'}
-      if (heading.closest('form')) {return 'form'}
-      if (heading.closest('.card, section')) {return 'card'}
+      if (heading.closest('.stat-grid, .stat-card')) {
+        return 'stat'
+      }
+      if (heading.closest('table, .table-card, .table-wrap')) {
+        return 'table-section'
+      }
+      if (heading.closest('form')) {
+        return 'form'
+      }
+      if (heading.closest('.card, section')) {
+        return 'card'
+      }
       return 'list'
     }
     const sections = uniqBy(
@@ -193,9 +219,9 @@ export async function extractDomInventory(target, options = {}) {
       (entry) => entry.label
     )
 
-    const statCards = [
-      ...scope.querySelectorAll('.stat-card, .card.stat, .stat')
-    ].filter((el) => isVisible(el) && !el.closest('[role="dialog"], .drawer'))
+    const statCards = [...scope.querySelectorAll('.stat-card, .card.stat, .stat')].filter(
+      (el) => isVisible(el) && !el.closest('[role="dialog"], .drawer')
+    )
     const stats = uniqBy(
       statCards.map((el) => {
         const valueEl = el.querySelector('.stat-value')
@@ -218,9 +244,13 @@ export async function extractDomInventory(target, options = {}) {
     const nameForTable = (table) => {
       const explicit =
         text(table.getAttribute('aria-label')) || text(table.querySelector('caption'))
-      if (explicit) {return explicit}
+      if (explicit) {
+        return explicit
+      }
       const cardHeading = cleanLabel(table.closest('.card, section')?.querySelector('h1, h2, h3'))
-      if (cardHeading) {return cardHeading}
+      if (cardHeading) {
+        return cardHeading
+      }
       const before = headings.filter(
         (heading) => heading.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING
       )
@@ -259,14 +289,13 @@ export async function extractDomInventory(target, options = {}) {
         readonly: Boolean(el.readOnly),
         placeholder: el.getAttribute('placeholder') || null,
         options:
-          el.tagName === 'SELECT'
-            ? [...el.options].map((option) => text(option))
-            : undefined,
-        help: norm(
-          el.closest('.field, label, .form-row')?.querySelector(
-            '.hint, .field-help, [data-help], .form-help'
-          )?.innerText
-        ) || null
+          el.tagName === 'SELECT' ? [...el.options].map((option) => text(option)) : undefined,
+        help:
+          norm(
+            el
+              .closest('.field, label, .form-row')
+              ?.querySelector('.hint, .field-help, [data-help], .form-help')?.innerText
+          ) || null
       }))
 
     const actions = [
@@ -375,7 +404,9 @@ export async function extractDomInventory(target, options = {}) {
     const sidebarEl = document.querySelector('.sidebar, aside.sidebar')
     const contentEl = document.querySelector('#contentArea, #content, main .content, main')
     const cardEl = scope.querySelector('.card, .stat-card')
-    const tokens = [{ role: 'body', fontSize: bodyStyle.fontSize, fontWeight: bodyStyle.fontWeight }]
+    const tokens = [
+      { role: 'body', fontSize: bodyStyle.fontSize, fontWeight: bodyStyle.fontWeight }
+    ]
     if (sidebarEl) {
       tokens.push({
         role: 'sidebar',
@@ -408,4 +439,3 @@ export async function extractDomInventory(target, options = {}) {
     }
   }, payload)
 }
-

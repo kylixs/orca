@@ -47,9 +47,7 @@ export async function collectPrototypeSide(page, { prototypeUrl, role }) {
   await prototypeGoto(page, '#/workbench')
   await waitForPrototypeRoute(page, 'workbench')
   if (role === 'developer') {
-    await page.evaluate(() =>
-      document.querySelector('[data-role-switch="developer"]')?.click()
-    )
+    await page.evaluate(() => document.querySelector('[data-role-switch="developer"]')?.click())
     await page.waitForTimeout(200)
   }
 
@@ -126,7 +124,12 @@ export async function collectActualSide(page, { baseUrl, role, credentials }) {
 
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('#view-login, #view-app', { state: 'visible', timeout: 15000 })
-  if (await page.locator('#view-login').isVisible().catch(() => false)) {
+  if (
+    await page
+      .locator('#view-login')
+      .isVisible()
+      .catch(() => false)
+  ) {
     surfaces.login = await extractDomInventory(page, { surface: 'login' })
     reachability.login = 'reached'
     await page.fill('#username', credentials.username)
@@ -180,7 +183,9 @@ export async function collectActualSide(page, { baseUrl, role, credentials }) {
     const button = [...document.querySelectorAll('button[data-open]')].find(
       (candidate) => !candidate.disabled
     )
-    if (!button) {return false}
+    if (!button) {
+      return false
+    }
     button.click()
     return true
   })
@@ -227,8 +232,12 @@ export async function collectActualSide(page, { baseUrl, role, credentials }) {
 
 export function resolveCredentials(accounts, account) {
   const entry = accounts?.[account]
-  if (entry) {return entry}
-  if (account === 'admin') {return { username: 'admin', password: 'Adm1n!' }}
+  if (entry) {
+    return entry
+  }
+  if (account === 'admin') {
+    return { username: 'admin', password: 'Adm1n!' }
+  }
   return { username: account === 'developer' ? 'zhangsan' : account, password: 'Passw0rd!' }
 }
 
@@ -253,7 +262,10 @@ export async function collectComparison({
     roles: []
   }
   for (const spec of roles) {
-    const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } })
+    const context = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      viewport: { width: 1440, height: 900 }
+    })
     try {
       const page = await context.newPage()
       const prototype = await collectPrototypeSide(page, { prototypeUrl, role: spec.role })
@@ -282,4 +294,3 @@ export async function collectComparison({
   }
   return result
 }
-

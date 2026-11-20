@@ -26,7 +26,10 @@ const frameOf = (page) => page.frames().find((f) => f.url().includes('/cloud-adm
 
 async function openProject(page, key) {
   const started = Date.now()
-  await page.locator('tr', { hasText: key }).getByRole('button', { name: '打开', exact: true }).click()
+  await page
+    .locator('tr', { hasText: key })
+    .getByRole('button', { name: '打开', exact: true })
+    .click()
   await page.locator('#workspaceOverlay iframe').waitFor({ timeout: 15000 })
   let last = null
   while (Date.now() - started < 30000) {
@@ -44,8 +47,15 @@ async function openProject(page, key) {
     await sleep(500)
   }
   const frame = frameOf(page)
-  const frameBody = frame ? await frame.evaluate(() => document.body.innerText.slice(0, 240)).catch(() => '') : null
-  return { ...last, ms: Date.now() - started, frameUrl: frame?.url()?.slice(0, 140) ?? null, frameBody }
+  const frameBody = frame
+    ? await frame.evaluate(() => document.body.innerText.slice(0, 240)).catch(() => '')
+    : null
+  return {
+    ...last,
+    ms: Date.now() - started,
+    frameUrl: frame?.url()?.slice(0, 140) ?? null,
+    frameBody
+  }
 }
 
 async function closeOverlay(page) {
@@ -58,13 +68,20 @@ async function closeOverlay(page) {
 }
 
 async function scenario(name, firstKey, secondKey) {
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1600, height: 1000 } })
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    viewport: { width: 1600, height: 1000 }
+  })
   const page = await context.newPage()
   page.setDefaultTimeout(25000)
   const events = { consoleErrors: [], httpFailures: [] }
-  page.on('console', (m) => { if (m.type() === 'error') events.consoleErrors.push(m.text().slice(0, 200)) })
+  page.on('console', (m) => {
+    if (m.type() === 'error') events.consoleErrors.push(m.text().slice(0, 200))
+  })
   page.on('pageerror', (e) => events.consoleErrors.push(`pageerror: ${e.message}`))
-  page.on('response', (r) => { if (r.status() >= 400) events.httpFailures.push(`${r.status()} ${r.url().slice(0, 160)}`) })
+  page.on('response', (r) => {
+    if (r.status() >= 400) events.httpFailures.push(`${r.status()} ${r.url().slice(0, 160)}`)
+  })
   page.on('dialog', (d) => d.accept())
   const record = { name, firstKey, secondKey, first: null, closed: null, second: null, events }
   try {
@@ -75,7 +92,8 @@ async function scenario(name, firstKey, secondKey) {
     await sleep(1200)
     record.second = await openProject(page, secondKey)
     await page.screenshot({ path: path.join(SHOTS, `reentry-${name}-2-second.png`) })
-    record.pass = record.first.ready === true && record.closed === true && record.second.ready === true
+    record.pass =
+      record.first.ready === true && record.closed === true && record.second.ready === true
   } catch (error) {
     record.error = error instanceof Error ? `${error.message}\n${error.stack}` : String(error)
     record.pass = false
@@ -83,17 +101,28 @@ async function scenario(name, firstKey, secondKey) {
     await context.close()
   }
   results.push(record)
-  console.log(`${record.pass ? 'PASS' : 'FAIL'} ${name}: first=${record.first?.ready} closed=${record.closed} second=${record.second?.ready} secondFailure=${record.second?.failure ?? ''}`)
+  console.log(
+    `${record.pass ? 'PASS' : 'FAIL'} ${name}: first=${record.first?.ready} closed=${record.closed} second=${record.second?.ready} secondFailure=${record.second?.failure ?? ''}`
+  )
 }
 
 await scenario('same-project', 'demo-app', 'demo-app')
 await scenario('different-project', 'demo-app', 'zhangsan-demo')
 await scenario('cross-host', 'demo-app', 'infra-tools')
-fs.writeFileSync(path.join(OUT, 'p0-reentry-3scenarios.json'), JSON.stringify({
-  check: 'U59① P0 embed second-open',
-  base: BASE,
-  generatedAt: new Date().toISOString(),
-  results
-}, null, 2))
+fs.writeFileSync(
+  path.join(OUT, 'p0-reentry-3scenarios.json'),
+  JSON.stringify(
+    {
+      check: 'U59① P0 embed second-open',
+      base: BASE,
+      generatedAt: new Date().toISOString(),
+      results
+    },
+    null,
+    2
+  )
+)
 await browser.close()
-console.log(`written ${results.length} scenarios; failures=${results.filter((r) => !r.pass).length}`)
+console.log(
+  `written ${results.length} scenarios; failures=${results.filter((r) => !r.pass).length}`
+)

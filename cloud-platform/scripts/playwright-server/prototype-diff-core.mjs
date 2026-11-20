@@ -12,8 +12,12 @@ const ALIAS_MAP = new Map()
 for (const [left, right] of ALIAS_PAIRS) {
   const a = normalizeLabel(left)
   const b = normalizeLabel(right)
-  if (!ALIAS_MAP.has(a)) {ALIAS_MAP.set(a, new Set())}
-  if (!ALIAS_MAP.has(b)) {ALIAS_MAP.set(b, new Set())}
+  if (!ALIAS_MAP.has(a)) {
+    ALIAS_MAP.set(a, new Set())
+  }
+  if (!ALIAS_MAP.has(b)) {
+    ALIAS_MAP.set(b, new Set())
+  }
   ALIAS_MAP.get(a).add(b)
   ALIAS_MAP.get(b).add(a)
 }
@@ -48,8 +52,12 @@ function bigrams(value) {
 export function diceSimilarity(left, right) {
   const a = normalizeLabel(left)
   const b = normalizeLabel(right)
-  if (a === b) {return a ? 1 : 0}
-  if (a.length < 2 || b.length < 2) {return 0}
+  if (a === b) {
+    return a ? 1 : 0
+  }
+  if (a.length < 2 || b.length < 2) {
+    return 0
+  }
   const leftGrams = bigrams(a)
   const rightGrams = bigrams(b)
   let overlap = 0
@@ -72,13 +80,17 @@ export function matchLabels(prototypeLabels, actualLabels, options = {}) {
   }
 
   prototype.forEach((label, prototypeIndex) => {
-    const exact = actual.findIndex((candidate, index) => !usedActual.has(index) && candidate === label)
+    const exact = actual.findIndex(
+      (candidate, index) => !usedActual.has(index) && candidate === label
+    )
     if (exact !== -1) {
       pairs.push({ prototypeIndex, actualIndex: claim(exact), via: 'exact', score: 1 })
     }
   })
   prototype.forEach((label, prototypeIndex) => {
-    if (pairs.some((pair) => pair.prototypeIndex === prototypeIndex)) {return}
+    if (pairs.some((pair) => pair.prototypeIndex === prototypeIndex)) {
+      return
+    }
     const alias = actual.findIndex(
       (candidate, index) => !usedActual.has(index) && aliasMatch(label, candidate)
     )
@@ -87,12 +99,18 @@ export function matchLabels(prototypeLabels, actualLabels, options = {}) {
     }
   })
   prototype.forEach((label, prototypeIndex) => {
-    if (pairs.some((pair) => pair.prototypeIndex === prototypeIndex)) {return}
+    if (pairs.some((pair) => pair.prototypeIndex === prototypeIndex)) {
+      return
+    }
     let best = { index: -1, score: 0 }
     actual.forEach((candidate, index) => {
-      if (usedActual.has(index)) {return}
+      if (usedActual.has(index)) {
+        return
+      }
       const score = diceSimilarity(label, candidate)
-      if (score > best.score) {best = { index, score }}
+      if (score > best.score) {
+        best = { index, score }
+      }
     })
     if (best.index >= 0 && best.score >= threshold) {
       pairs.push({
@@ -166,7 +184,6 @@ export function compareOrdered(prototypeLabels, actualLabels) {
 }
 
 /* ---------------- diff ---------------- */
-
 
 export function union(...lists) {
   return [...new Set(lists.flat())]

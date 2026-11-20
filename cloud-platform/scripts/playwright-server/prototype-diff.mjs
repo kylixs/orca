@@ -67,10 +67,14 @@ export function diffInventories(collection) {
           suggestion: '核对平台管理员权限判定'
         })
       }
-      if (protoReach !== 'reached' || actualReach !== 'reached') {continue}
+      if (protoReach !== 'reached' || actualReach !== 'reached') {
+        continue
+      }
       const prototypeInventory = prototype.surfaces[surface]
       const actualInventory = actual.surfaces[surface]
-      if (!prototypeInventory || !actualInventory) {continue}
+      if (!prototypeInventory || !actualInventory) {
+        continue
+      }
       compareLayoutSurface({
         add,
         role,
@@ -105,7 +109,6 @@ export function diffInventories(collection) {
     acceptance: verifyKnownDifferences(findings)
   }
 }
-
 
 function summarize(findings) {
   const bySeverity = { P0: 0, P1: 0, P2: 0 }
@@ -195,4 +198,3 @@ export function verifyKnownDifferences(findings) {
 }
 
 /* ---------------- report ---------------- */
-

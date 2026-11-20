@@ -42,10 +42,15 @@ const outline = async (frame) =>
   })
 
 const browser = await chromium.launch({ headless: true })
-const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1600, height: 1000 } })
+const context = await browser.newContext({
+  ignoreHTTPSErrors: true,
+  viewport: { width: 1600, height: 1000 }
+})
 const page = await context.newPage()
 const consoleErrors = []
-page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()) })
+page.on('console', (m) => {
+  if (m.type() === 'error') consoleErrors.push(m.text())
+})
 page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`))
 
 await page.goto(BASE + '/', { waitUntil: 'networkidle' })
@@ -87,11 +92,19 @@ if (fr) {
   const outlineData = await outline(fr)
   fs.writeFileSync(path.join(OUT, 'probe-frame-outline.json'), JSON.stringify(outlineData, null, 2))
   log('frame outline entries', outlineData.length)
-  log(outlineData.slice(0, 80).map((x) => `${x.tag}${x.testid ? '[' + x.testid + ']' : ''}: ${x.text}`).join('\n'))
+  log(
+    outlineData
+      .slice(0, 80)
+      .map((x) => `${x.tag}${x.testid ? '[' + x.testid + ']' : ''}: ${x.text}`)
+      .join('\n')
+  )
   log('frame html head', (await fr.content()).slice(0, 500))
 } else {
   log('no cloud-admin frame')
 }
-fs.writeFileSync(path.join(OUT, 'probe-console-errors.json'), JSON.stringify(consoleErrors, null, 2))
+fs.writeFileSync(
+  path.join(OUT, 'probe-console-errors.json'),
+  JSON.stringify(consoleErrors, null, 2)
+)
 log('console errors', consoleErrors.length)
 await browser.close()

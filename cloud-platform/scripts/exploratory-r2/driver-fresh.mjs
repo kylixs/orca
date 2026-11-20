@@ -42,7 +42,9 @@ try {
   await shoot(page, '70-fresh-after-login.png')
   const clicked = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('[data-worktree-id]')]
-    const row = rows.find((el) => /infra-tools/.test(el.innerText ?? '') && /主要|main/.test(el.innerText ?? ''))
+    const row = rows.find(
+      (el) => /infra-tools/.test(el.innerText ?? '') && /主要|main/.test(el.innerText ?? '')
+    )
     if (!row) return null
     ;(row.querySelector('[data-worktree-card-surface]') ?? row).click()
     return row.getAttribute('data-worktree-id')
@@ -56,7 +58,9 @@ try {
   const plus = page.locator('button[aria-label="新标签页"], button[aria-label="New tab"]').first()
   out.probes.plusVisible = await plus.isVisible().catch(() => false)
   if (out.probes.plusVisible) {
-    await plus.click({ timeout: 5000 }).catch((e) => { out.probes.plusClickError = String(e.message) })
+    await plus.click({ timeout: 5000 }).catch((e) => {
+      out.probes.plusClickError = String(e.message)
+    })
     await wait(1500)
   }
   out.probes.menu = await page.evaluate(() => {
@@ -64,7 +68,10 @@ try {
     return {
       wrappers: [...document.querySelectorAll('[data-radix-popper-content-wrapper]')].length,
       menus: [...document.querySelectorAll('[role="menu"]')].map((el) => text(el).slice(0, 1000)),
-      items: [...document.querySelectorAll('[role="menuitem"]')].map((el) => ({ text: text(el), disabled: el.getAttribute('data-disabled') !== null }))
+      items: [...document.querySelectorAll('[role="menuitem"]')].map((el) => ({
+        text: text(el),
+        disabled: el.getAttribute('data-disabled') !== null
+      }))
     }
   })
   await shoot(page, '72-fresh-plus-menu.png')
@@ -96,7 +103,9 @@ try {
 
   // Explorer via rail button.
   out.probes.explorerClicked = await page.evaluate(() => {
-    const btn = [...document.querySelectorAll('button[aria-label^="Explorer"]')].find((b) => b.getClientRects().length)
+    const btn = [...document.querySelectorAll('button[aria-label^="Explorer"]')].find(
+      (b) => b.getClientRects().length
+    )
     if (!btn) return false
     btn.click()
     return true
@@ -104,7 +113,11 @@ try {
   await wait(4000)
   out.probes.explorerRows = await page.evaluate(() => {
     const shell = document.querySelector('[data-orca-explorer-shell]')
-    return shell ? [...shell.querySelectorAll('button[data-file-explorer-row]')].map((el) => (el.innerText ?? '').replace(/\s+/g, ' ').trim()).slice(0, 40) : null
+    return shell
+      ? [...shell.querySelectorAll('button[data-file-explorer-row]')]
+          .map((el) => (el.innerText ?? '').replace(/\s+/g, ' ').trim())
+          .slice(0, 40)
+      : null
   })
   await shoot(page, '75-fresh-explorer.png')
 } catch (error) {
@@ -112,22 +125,34 @@ try {
 } finally {
   out.logs = logs?.filter((l) => !l.includes('Electron Security Warning')).slice(0, 300)
   writeFileSync(path.join(EVIDENCE, 'fresh-stage.json'), JSON.stringify(out, null, 2))
-  try { await app?.close() } catch {}
-  console.log(JSON.stringify({
-    error: out.error,
-    signedIn: out.probes.signedIn,
-    rows: out.probes.rows,
-    clicked: out.probes.clicked,
-    afterActivate: { terms: out.probes.afterActivate?.terminals, tabs: out.probes.afterActivate?.tabs, body: (out.probes.afterActivate?.bodyText ?? '').slice(0, 500) },
-    plusVisible: out.probes.plusVisible,
-    plusClickError: out.probes.plusClickError,
-    menu: out.probes.menu,
-    menuPicked: out.probes.menuPicked,
-    afterMenu: { terms: out.probes.afterMenu?.terminals, tabs: out.probes.afterMenu?.tabs },
-    focused: out.probes.focused,
-    termTail: (out.probes.term ?? '').slice(-500),
-    longSeen: out.probes.longSeen,
-    explorerRows: out.probes.explorerRows,
-    logs: out.logs
-  }, null, 2))
+  try {
+    await app?.close()
+  } catch {}
+  console.log(
+    JSON.stringify(
+      {
+        error: out.error,
+        signedIn: out.probes.signedIn,
+        rows: out.probes.rows,
+        clicked: out.probes.clicked,
+        afterActivate: {
+          terms: out.probes.afterActivate?.terminals,
+          tabs: out.probes.afterActivate?.tabs,
+          body: (out.probes.afterActivate?.bodyText ?? '').slice(0, 500)
+        },
+        plusVisible: out.probes.plusVisible,
+        plusClickError: out.probes.plusClickError,
+        menu: out.probes.menu,
+        menuPicked: out.probes.menuPicked,
+        afterMenu: { terms: out.probes.afterMenu?.terminals, tabs: out.probes.afterMenu?.tabs },
+        focused: out.probes.focused,
+        termTail: (out.probes.term ?? '').slice(-500),
+        longSeen: out.probes.longSeen,
+        explorerRows: out.probes.explorerRows,
+        logs: out.logs
+      },
+      null,
+      2
+    )
+  )
 }

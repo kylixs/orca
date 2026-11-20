@@ -40,13 +40,23 @@ const sessions = [
   }
 ]
 
-const out = { generatedAt: new Date().toISOString(), platform: PLATFORM_URL, project: PROJECT, sessions: [] }
+const out = {
+  generatedAt: new Date().toISOString(),
+  platform: PLATFORM_URL,
+  project: PROJECT,
+  sessions: []
+}
 
 async function call(page, selector, method, params = {}) {
   return page.evaluate(
     async ({ selector, method, params }) => {
       try {
-        return await window.api.runtimeEnvironments.call({ selector, method, params, timeoutMs: 20000 })
+        return await window.api.runtimeEnvironments.call({
+          selector,
+          method,
+          params,
+          timeoutMs: 20000
+        })
       } catch (error) {
         return { ok: false, thrown: String(error?.message ?? error) }
       }
@@ -90,7 +100,11 @@ async function runSession(spec) {
       await page.waitForTimeout(1000)
     }
     if (!env) {
-      result.steps.push({ step: 'env', ok: false, detail: 'demo-app environment not registered in 60s' })
+      result.steps.push({
+        step: 'env',
+        ok: false,
+        detail: 'demo-app environment not registered in 60s'
+      })
       result.shell = await readShell(page)
       return result
     }
@@ -100,7 +114,8 @@ async function runSession(spec) {
     result.rpc.workspaceInfo = await call(page, selector, 'workspace.info')
     const info = result.rpc.workspaceInfo?.result ?? {}
     const projectRoot = info.projectRoot ?? info.projectRootPath ?? PROJECT_ROOT
-    const workspaceRoot = info.workspaceRoot ?? info.workspaceRootPath ?? `${projectRoot}/.orca-worktrees/${spec.user}`
+    const workspaceRoot =
+      info.workspaceRoot ?? info.workspaceRootPath ?? `${projectRoot}/.orca-worktrees/${spec.user}`
     // The runtime resolver wants a worktree selector, not a bare directory. The
     // workspace checkout (when one exists) is the registered worktree the cloud
     // session may write to; otherwise fall back to the workspace root path.
@@ -124,7 +139,8 @@ async function runSession(spec) {
       worktree: writeWorktree,
       clientMutationId: `cap-${spec.user}-${Date.now()}`
     })
-    const created = result.rpc.terminalCreate?.result?.terminal ?? result.rpc.terminalCreate?.terminal
+    const created =
+      result.rpc.terminalCreate?.result?.terminal ?? result.rpc.terminalCreate?.terminal
     const handle = created?.handle ?? created?.terminal ?? null
     result.terminalHandle = typeof handle === 'string' ? handle : null
     const handles = [
@@ -148,7 +164,11 @@ async function runSession(spec) {
     }
 
     const ok = (rpc) => rpc?.ok === true
-    result.observed = { read: ok(result.rpc.read), write: ok(result.rpc.write), terminal: ok(result.rpc.terminalCreate) }
+    result.observed = {
+      read: ok(result.rpc.read),
+      write: ok(result.rpc.write),
+      terminal: ok(result.rpc.terminalCreate)
+    }
     result.steps.push({
       step: 'capability',
       ok:
@@ -173,7 +193,12 @@ for (const spec of sessions) {
   const result = await runSession(spec)
   const capabilityStep = result.steps.find((step) => step.step === 'capability')
   if (!capabilityStep || !capabilityStep.ok) {
-    failures.push({ user: spec.user, observed: result.observed, expected: spec.expect, error: result.error })
+    failures.push({
+      user: spec.user,
+      observed: result.observed,
+      expected: spec.expect,
+      error: result.error
+    })
   }
   out.sessions.push(result)
   console.log(

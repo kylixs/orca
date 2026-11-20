@@ -117,7 +117,9 @@ function compareStats({ add, role, surface, p, a }) {
   for (const pair of match.pairs) {
     pairedPrototype.add(pair.prototypeIndex)
     pairedActual.add(pair.actualIndex)
-    if (pair.via === 'exact') {continue}
+    if (pair.via === 'exact') {
+      continue
+    }
     add({
       role,
       surface,
@@ -198,7 +200,9 @@ function compareStats({ add, role, surface, p, a }) {
 }
 
 function compareTables({ add, role, surface, p, a }) {
-  if (!p.tables.length && !a.tables.length) {return}
+  if (!p.tables.length && !a.tables.length) {
+    return
+  }
   const names = matchLabels(
     p.tables.map((table) => table.name),
     a.tables.map((table) => table.name)
@@ -228,7 +232,9 @@ function compareTables({ add, role, surface, p, a }) {
   pairs.forEach((pair) => {
     const prototypeTable = p.tables[pair.prototypeIndex]
     const actualTable = a.tables[pair.actualIndex]
-    if (!prototypeTable || !actualTable) {return}
+    if (!prototypeTable || !actualTable) {
+      return
+    }
     if (pair.via !== 'exact') {
       add({
         role,
@@ -292,9 +298,10 @@ function compareTables({ add, role, surface, p, a }) {
   })
 }
 
-
 function compareWorkspace({ add, role, surface, p, a }) {
-  if (surface !== 'workspace') {return}
+  if (surface !== 'workspace') {
+    return
+  }
   const prototypeIframe = p.frames.some((frame) => /cloud-admin|iframe/.test(frame.src))
   const actualFrame = a.frames.find((frame) => /cloud-admin/.test(frame.src))
   if (!prototypeIframe && actualFrame) {
@@ -325,6 +332,5 @@ function compareWorkspace({ add, role, surface, p, a }) {
     })
   }
 }
-
 
 export { compareSurface as compareLayoutSurface }

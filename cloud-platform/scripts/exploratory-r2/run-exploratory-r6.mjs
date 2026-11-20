@@ -45,7 +45,10 @@ function check(pathId, id, ok, detail) {
     `${ok ? 'PASS' : 'FAIL'} [${pathId}] ${id}: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`
   )
 }
-const norm = (value) => String(value ?? '').replace(/\s+/g, ' ').trim()
+const norm = (value) =>
+  String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
 const dialog = (page) => page.locator('.dialog-backdrop').last()
 const dialogTitle = (page) => dialog(page).locator('.dialog h2').innerText()
 const dialogBody = (page) => dialog(page).locator('.dialog .body').innerText()
@@ -128,8 +131,16 @@ const apiSend = (p, method, body) =>
 async function login() {
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' })
   await page.locator('#view-login').waitFor({ state: 'visible' })
-  if (await page.locator('#view-app').isVisible().catch(() => false)) {
-    await page.locator('#logoutBtn').click().catch(() => {})
+  if (
+    await page
+      .locator('#view-app')
+      .isVisible()
+      .catch(() => false)
+  ) {
+    await page
+      .locator('#logoutBtn')
+      .click()
+      .catch(() => {})
     await page.locator('#loginForm').waitFor({ state: 'visible' })
   }
   await page.fill('#username', USER)
@@ -198,7 +209,10 @@ try {
   const hostGrantRows = hostGrantsApi.body.grants ?? []
   const hostCards = await page.locator('#hostPermCards .perm-card').evaluateAll((cards) =>
     cards.map((card) => {
-      const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim()
+      const clean = (value) =>
+        String(value ?? '')
+          .replace(/\s+/g, ' ')
+          .trim()
       return {
         key: card.dataset.card,
         label: clean(card.querySelector('.perm-card-head strong')?.textContent),
@@ -223,7 +237,9 @@ try {
   const expectedHostCounts = ['view', 'control', 'manage'].map(
     (key) => hostGrantRows.filter((g) => roleOf(g.permissions) === key).length
   )
-  const actualHostCounts = ['view', 'control', 'manage'].map((key, i) => hostCards[i]?.chips.length ?? -1)
+  const actualHostCounts = ['view', 'control', 'manage'].map(
+    (key, i) => hostCards[i]?.chips.length ?? -1
+  )
   const zhangsanRow = hostGrantRows.find((g) => g.username === 'zhangsan')
   check(
     "P1''",
@@ -242,7 +258,9 @@ try {
     "P1''",
     'P1-1 host chips clean (no bits/level badge)',
     hostCards.every((c) => c.headBadges === 0 && c.chips.every((chip) => chip.levelBadges === 0)),
-    hostCards.map((c) => `head${c.headBadges}/chip${c.chips.map((x) => x.levelBadges).join('')}`).join(' ')
+    hostCards
+      .map((c) => `head${c.headBadges}/chip${c.chips.map((x) => x.levelBadges).join('')}`)
+      .join(' ')
   )
   check(
     "P1''",
@@ -278,7 +296,9 @@ try {
     'P1-2 host add writes target card bits',
     hostAddResponse.status() === 200 &&
       JSON.stringify(hostAdded?.permissions) === JSON.stringify(['view']) &&
-      (await page.locator(`#hostPermCards .perm-card[data-card="view"] [data-chip="group:${hostSubject}"]`).count()) === 1,
+      (await page
+        .locator(`#hostPermCards .perm-card[data-card="view"] [data-chip="group:${hostSubject}"]`)
+        .count()) === 1,
     { status: hostAddResponse.status(), permissions: hostAdded?.permissions }
   )
   const hostRemovePut = waitPut()
@@ -297,7 +317,9 @@ try {
         `宿主无法解析组成员，将断开该主机当前全部在线会话（≤60 秒内生效，FR-1.7）。`
       ) &&
       removeConfirmLabel === '确认移除' &&
-      (await dialog(page).locator('.dialog .foot [data-action="0"]').getAttribute('class')).includes('danger'),
+      (
+        await dialog(page).locator('.dialog .foot [data-action="0"]').getAttribute('class')
+      ).includes('danger'),
     { removeTitle, removeBody, removeConfirmLabel }
   )
   await dialog(page).locator('.dialog .foot [data-action="0"]').click()
@@ -316,14 +338,21 @@ try {
 
   // ---------------- P1''-3 host adjust dialog (no write) ----------------
   const putsBeforeAdjust = puts.length
-  await page.locator('#hostPermCards .perm-card[data-card="control"] .perm-chip-adjust').first().click()
+  await page
+    .locator('#hostPermCards .perm-card[data-card="control"] .perm-chip-adjust')
+    .first()
+    .click()
   await dialog(page).waitFor({ state: 'visible' })
   const adjustTitle = await dialogTitle(page)
   const adjustBody = await dialogBody(page)
   const adjustActions = await dialog(page)
     .locator('.dialog .foot [data-action]')
     .evaluateAll((buttons) =>
-      buttons.map((b) => String(b.textContent ?? '').replace(/\s+/g, ' ').trim())
+      buttons.map((b) =>
+        String(b.textContent ?? '')
+          .replace(/\s+/g, ' ')
+          .trim()
+      )
     )
   await dialog(page).locator('.dialog .foot [data-action="close"]').click()
   await dialog(page).waitFor({ state: 'detached' })
@@ -334,7 +363,9 @@ try {
       adjustBody.includes('当前角色为「控制」') &&
       adjustActions.includes('改为「查看」') &&
       adjustActions.includes('改为「管理」') &&
-      adjustBody.includes('管理=provision+maintain（不含 view）：保存会丢失 view 带来的项目可见性。') &&
+      adjustBody.includes(
+        '管理=provision+maintain（不含 view）：保存会丢失 view 带来的项目可见性。'
+      ) &&
       puts.length === putsBeforeAdjust &&
       (await page.locator('.drawer-backdrop .drawer').count()) === 1,
     { adjustTitle, adjustActions, extraPuts: puts.length - putsBeforeAdjust }
@@ -349,7 +380,10 @@ try {
   const projectGrantRows = projectGrantsApi.body.grants ?? []
   const projectCards = await page.locator('#projectPermCards .perm-card').evaluateAll((cards) =>
     cards.map((card) => {
-      const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim()
+      const clean = (value) =>
+        String(value ?? '')
+          .replace(/\s+/g, ' ')
+          .trim()
       return {
         key: card.dataset.card,
         label: clean(card.querySelector('.perm-card-head strong')?.textContent),
@@ -389,9 +423,7 @@ try {
       derived.chips.some((text) => text.includes('来源：控制卡')),
     { derived, hostControlHolders: hostControlHolders.map((g) => g.username ?? g.subjectId) }
   )
-  const projectAndHostViewOnly = hostGrantRows.filter(
-    (g) => roleOf(g.permissions) === 'view'
-  )
+  const projectAndHostViewOnly = hostGrantRows.filter((g) => roleOf(g.permissions) === 'view')
   check(
     "P1''",
     'P1-4 view-only host holders excluded from derived',
@@ -425,7 +457,9 @@ try {
     projectAddResponse.status() === 200 &&
       JSON.stringify(projectAdded?.permissions) === JSON.stringify(['file:read', 'open']) &&
       (await page
-        .locator(`#projectPermCards .perm-card[data-card="view"] [data-chip="group:${projectSubject}"]`)
+        .locator(
+          `#projectPermCards .perm-card[data-card="view"] [data-chip="group:${projectSubject}"]`
+        )
         .count()) === 1,
     { status: projectAddResponse.status(), permissions: projectAdded?.permissions }
   )
@@ -797,7 +831,10 @@ try {
   const cleanOk =
     !hostClean.some((g) => g.subjectType === 'group' && g.subjectId === hostSubject) &&
     !projectClean.some((g) => g.subjectType === 'group' && g.subjectId === projectSubject)
-  check("P1''", 'cleanup: no residual test grants', cleanOk, { hostClean: hostClean.length, projectClean: projectClean.length })
+  check("P1''", 'cleanup: no residual test grants', cleanOk, {
+    hostClean: hostClean.length,
+    projectClean: projectClean.length
+  })
 } catch (error) {
   out.error = error instanceof Error ? `${error.message}\n${error.stack}` : String(error)
   check("P1''", 'RUN', false, out.error)

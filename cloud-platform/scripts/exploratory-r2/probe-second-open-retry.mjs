@@ -5,7 +5,10 @@ const BASE = 'https://127.0.0.1:18787'
 const SHOTS = path.resolve('cloud-platform/evidence/exploratory-r2/screenshots')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const browser = await chromium.launch({ headless: true })
-const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1600, height: 1000 } })
+const context = await browser.newContext({
+  ignoreHTTPSErrors: true,
+  viewport: { width: 1600, height: 1000 }
+})
 const page = await context.newPage()
 page.on('dialog', (d) => d.accept())
 const fr = () => page.frames().find((f) => f.url().includes('/cloud-admin.html'))
@@ -38,11 +41,17 @@ if (await page.locator('#username').count()) {
   await page.click('button:has-text("登录")')
 }
 await page.waitForSelector('text=demo-app')
-await page.locator('tr', { hasText: 'demo-app' }).getByRole('button', { name: '打开', exact: true }).click()
+await page
+  .locator('tr', { hasText: 'demo-app' })
+  .getByRole('button', { name: '打开', exact: true })
+  .click()
 console.log('first', await waitEnd(30000))
 await page.locator('#workspaceOverlay [data-workspace-close]').click()
 await sleep(1200)
-await page.locator('tr', { hasText: 'infra-tools' }).getByRole('button', { name: '打开', exact: true }).click()
+await page
+  .locator('tr', { hasText: 'infra-tools' })
+  .getByRole('button', { name: '打开', exact: true })
+  .click()
 const second = await waitEnd(25000)
 console.log('second', second)
 await page.screenshot({ path: path.join(SHOTS, 'probe-second-failure.png') })
@@ -52,6 +61,6 @@ if (second.retry) {
   console.log('retry1', retried)
   await page.screenshot({ path: path.join(SHOTS, 'probe-second-retry1.png') })
   const f = fr()
-  if (f) console.log('retry body', (await f.evaluate(() => document.body.innerText.slice(0, 300))))
+  if (f) console.log('retry body', await f.evaluate(() => document.body.innerText.slice(0, 300)))
 }
 await browser.close()

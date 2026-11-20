@@ -4,8 +4,12 @@ import path from 'node:path'
 import { union } from './prototype-diff-core.mjs'
 
 function evidence(value) {
-  if (value === null || value === undefined) {return '—'}
-  if (typeof value === 'string') {return value}
+  if (value === null || value === undefined) {
+    return '—'
+  }
+  if (typeof value === 'string') {
+    return value
+  }
   const text = JSON.stringify(value)
   return text.length > 180 ? `${text.slice(0, 177)}…` : text
 }
@@ -27,7 +31,9 @@ export function renderReport(diff) {
     lines.push(`| ${index + 1} | ${check.label} | ${check.found ? '✅ 已检出' : '❌ 未检出'} |`)
   })
   lines.push('')
-  lines.push(`结论：${diff.acceptance.passed ? '**6/6 全部检出，方法有效**' : '**存在未检出项，方法需复核**'}`)
+  lines.push(
+    `结论：${diff.acceptance.passed ? '**6/6 全部检出，方法有效**' : '**存在未检出项，方法需复核**'}`
+  )
   lines.push('')
   lines.push('## 汇总')
   lines.push('')
@@ -102,4 +108,3 @@ export function writeComparisonEvidence(diff, outDir) {
   writeFileSync(reportFile, renderReport(diff))
   return { diffFile, reportFile }
 }
-

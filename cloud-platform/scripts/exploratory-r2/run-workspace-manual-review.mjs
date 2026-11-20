@@ -35,7 +35,8 @@ const PROJECT_INFRA = 'proj_fc96a124'
 const WT = '/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2'
 const WT_ZHANGSAN =
   '/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/admin/main-2'
-const WT2 = '/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/admin/main-3'
+const WT2 =
+  '/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/admin/main-3'
 
 const steps = []
 const counters = { A: 0, B: 0, C: 0 }
@@ -82,7 +83,13 @@ function watch(page, segment) {
 let current = null
 
 function addAssertion(name, ok, expected, actual, severity = 'P1') {
-  current.assertions.push({ name, ok: Boolean(ok), expected, actual, severity: ok ? null : severity })
+  current.assertions.push({
+    name,
+    ok: Boolean(ok),
+    expected,
+    actual,
+    severity: ok ? null : severity
+  })
   return Boolean(ok)
 }
 
@@ -195,7 +202,9 @@ async function expandParents(page, relPath) {
 }
 
 async function clickFileNode(page, relPath) {
-  await t(page, 'cloud-simple-workspace-right-tab-files').click().catch(() => {})
+  await t(page, 'cloud-simple-workspace-right-tab-files')
+    .click()
+    .catch(() => {})
   await sleep(250)
   await expandParents(page, relPath)
   const node = frameOf(page).locator(
@@ -405,17 +414,46 @@ async function segmentA() {
           hasSignInForm: document.querySelector('#web-cloud-api-url') !== null,
           hasAppLayout: document.querySelector('.app-layout') !== null,
           degradedToast: document.body.innerText.includes('Session restore failed'),
-          cloudSessionPersisted:
-            window.localStorage.getItem('orca.webCloudSession') !== null,
+          cloudSessionPersisted: window.localStorage.getItem('orca.webCloudSession') !== null,
           environment: stored === null ? null : (JSON.parse(stored)?.name ?? null),
           bodyTail: document.body.innerText.slice(0, 200)
         }
       })
-      addAssertion('handoff code cleared from URL', state.hash === '', 'hash 清空', state.hash, 'P0')
-      addAssertion('workspace shell mounted', state.hasAppLayout, '.app-layout 存在', String(state.hasAppLayout), 'P0')
-      addAssertion('no sign-in form', state.hasSignInForm === false, '无登录表单', String(state.hasSignInForm), 'P0')
-      addAssertion('not degraded (W7c)', state.degradedToast === false, '无 Session restore failed', String(state.degradedToast), 'P0')
-      addAssertion('cloud session persisted', state.cloudSessionPersisted, 'orca.webCloudSession 存在', String(state.cloudSessionPersisted), 'P0')
+      addAssertion(
+        'handoff code cleared from URL',
+        state.hash === '',
+        'hash 清空',
+        state.hash,
+        'P0'
+      )
+      addAssertion(
+        'workspace shell mounted',
+        state.hasAppLayout,
+        '.app-layout 存在',
+        String(state.hasAppLayout),
+        'P0'
+      )
+      addAssertion(
+        'no sign-in form',
+        state.hasSignInForm === false,
+        '无登录表单',
+        String(state.hasSignInForm),
+        'P0'
+      )
+      addAssertion(
+        'not degraded (W7c)',
+        state.degradedToast === false,
+        '无 Session restore failed',
+        String(state.degradedToast),
+        'P0'
+      )
+      addAssertion(
+        'cloud session persisted',
+        state.cloudSessionPersisted,
+        'orca.webCloudSession 存在',
+        String(state.cloudSessionPersisted),
+        'P0'
+      )
       addAssertion(
         'environment is demo-app',
         String(state.environment ?? '').includes('demo-app'),
@@ -426,8 +464,14 @@ async function segmentA() {
       note(JSON.stringify(state).slice(0, 500))
       // A first-run feature tip can cover the workspace; dismiss it so the
       // screenshot (and the reviewer) sees the workspace surface itself.
-      await popup.getByRole('button', { name: 'Got it' }).click({ timeout: 8000 }).catch(() => {})
-      await popup.locator('.app-layout').waitFor({ timeout: 10000 }).catch(() => {})
+      await popup
+        .getByRole('button', { name: 'Got it' })
+        .click({ timeout: 8000 })
+        .catch(() => {})
+      await popup
+        .locator('.app-layout')
+        .waitFor({ timeout: 10000 })
+        .catch(() => {})
       await popup.waitForTimeout(800)
       await shot(popup, 'web-workspace-entered')
     })
@@ -453,8 +497,20 @@ async function segmentA() {
         if (state.repoCount === 1 && state.activeWorktreeId) break
         await sleep(1000)
       }
-      addAssertion('one project row registered', state?.repoCount === 1, 'repoCount=1', String(state?.repoCount), 'P0')
-      addAssertion('checkout activated', Boolean(state?.activeWorktreeId), 'activeWorktreeId 非空', String(state?.activeWorktreeId), 'P0')
+      addAssertion(
+        'one project row registered',
+        state?.repoCount === 1,
+        'repoCount=1',
+        String(state?.repoCount),
+        'P0'
+      )
+      addAssertion(
+        'checkout activated',
+        Boolean(state?.activeWorktreeId),
+        'activeWorktreeId 非空',
+        String(state?.activeWorktreeId),
+        'P0'
+      )
       addAssertion(
         'checkout is the host-managed per-user one',
         String(state?.activeWorktreePath ?? '').includes('.orca-worktrees/admin/'),
@@ -462,15 +518,30 @@ async function segmentA() {
         String(state?.activeWorktreePath),
         'P0'
       )
-      addAssertion('explorer shell mounted', Boolean(state?.explorerShellMounted), 'data-orca-explorer-shell', String(state?.explorerShellMounted), 'P1')
-      addAssertion('cloud empty card retired', state?.sidebarCloudEmptyState === false, '云空态消失', String(state?.sidebarCloudEmptyState), 'P2')
+      addAssertion(
+        'explorer shell mounted',
+        Boolean(state?.explorerShellMounted),
+        'data-orca-explorer-shell',
+        String(state?.explorerShellMounted),
+        'P1'
+      )
+      addAssertion(
+        'cloud empty card retired',
+        state?.sidebarCloudEmptyState === false,
+        '云空态消失',
+        String(state?.sidebarCloudEmptyState),
+        'P2'
+      )
       note(JSON.stringify(state))
       await shot(popup, 'w13-workspace-view')
     })
 
     await runStep('A', '终端实时回显（Orca Web）', async () => {
       if (!popup) return
-      await popup.getByRole('button', { name: 'Got it' }).click({ timeout: 8000 }).catch(() => {})
+      await popup
+        .getByRole('button', { name: 'Got it' })
+        .click({ timeout: 8000 })
+        .catch(() => {})
       if ((await popup.locator('.xterm').count()) === 0) {
         await popup.keyboard.press(process.platform === 'darwin' ? 'Meta+T' : 'Control+T')
       }
@@ -486,7 +557,13 @@ async function segmentA() {
         if (content.includes(marker)) break
         await sleep(600)
       }
-      addAssertion('terminal accepts typing and streams output', content.includes(marker), 'PTY 回显 marker', content.includes(marker) ? 'marker 出现' : JSON.stringify(content.slice(-200)), 'P0')
+      addAssertion(
+        'terminal accepts typing and streams output',
+        content.includes(marker),
+        'PTY 回显 marker',
+        content.includes(marker) ? 'marker 出现' : JSON.stringify(content.slice(-200)),
+        'P0'
+      )
       await shot(popup, 'terminal-echo')
     })
 
@@ -503,8 +580,20 @@ async function segmentA() {
       // README.md opens in the rich markdown editor, not Monaco, so the
       // user-visible pane text is the oracle (Monaco's view-lines stays empty).
       const paneText = await popup.evaluate(() => document.body.innerText)
-      addAssertion('editor header shows README.md', pathText.includes('README.md'), 'README.md', pathText, 'P0')
-      addAssertion('file content rendered', /快速开始/.test(paneText) && /node src\/server\.js/.test(paneText), 'README 内容可见', paneText.match(/快速开始[^\n]*/)?.[0] ?? paneText.slice(0, 120), 'P1')
+      addAssertion(
+        'editor header shows README.md',
+        pathText.includes('README.md'),
+        'README.md',
+        pathText,
+        'P0'
+      )
+      addAssertion(
+        'file content rendered',
+        /快速开始/.test(paneText) && /node src\/server\.js/.test(paneText),
+        'README 内容可见',
+        paneText.match(/快速开始[^\n]*/)?.[0] ?? paneText.slice(0, 120),
+        'P1'
+      )
       await shot(popup, 'file-tree-editor')
       // The path list's editor oracle is Monaco: a code file must render lines.
       // src starts collapsed, so expand it before reaching server.js.
@@ -521,8 +610,18 @@ async function segmentA() {
       await popup.locator('.editor-header-path').first().waitFor({ timeout: 30000 })
       await popup.locator('.view-lines').first().waitFor({ timeout: 30000 })
       await popup.waitForTimeout(600)
-      const lineText = await popup.locator('.view-lines').first().innerText().catch(() => '')
-      addAssertion('JS file renders Monaco lines', /createOrder/.test(lineText), 'server.js 源码行', lineText.slice(0, 120), 'P1')
+      const lineText = await popup
+        .locator('.view-lines')
+        .first()
+        .innerText()
+        .catch(() => '')
+      addAssertion(
+        'JS file renders Monaco lines',
+        /createOrder/.test(lineText),
+        'server.js 源码行',
+        lineText.slice(0, 120),
+        'P1'
+      )
       await shot(popup, 'file-tree-monaco')
     })
 
@@ -541,8 +640,20 @@ async function segmentA() {
         const redeem = events.redeem.filter((r) => r.segment === 'A').at(-1)
         const apiValue = await replay.locator('#web-cloud-api-url').inputValue()
         const appLayout = await replay.locator('.app-layout').count()
-        addAssertion('redeem returns 410', redeem?.status === 410, '410', String(redeem?.status), 'P0')
-        addAssertion('falls back to sign-in form', (await replay.locator('#web-cloud-api-url').count()) === 1 && appLayout === 0, '登录表单可见', `form=${await replay.locator('#web-cloud-api-url').count()} app=${appLayout}`, 'P0')
+        addAssertion(
+          'redeem returns 410',
+          redeem?.status === 410,
+          '410',
+          String(redeem?.status),
+          'P0'
+        )
+        addAssertion(
+          'falls back to sign-in form',
+          (await replay.locator('#web-cloud-api-url').count()) === 1 && appLayout === 0,
+          '登录表单可见',
+          `form=${await replay.locator('#web-cloud-api-url').count()} app=${appLayout}`,
+          'P0'
+        )
         addAssertion('platform address prefilled', apiValue === BASE, BASE, apiValue, 'P1')
         note(JSON.stringify({ redeem, apiValue }))
         await shot(replay, 'replay-410-signin')
@@ -572,7 +683,13 @@ async function segmentB() {
   try {
     await runStep('B', '管理台登录（admin）', async () => {
       await loginConsole(page)
-      addAssertion('workbench rows visible', (await page.locator('tr', { hasText: 'demo-app' }).count()) === 1, 'demo-app 行可见', 'ok', 'P0')
+      addAssertion(
+        'workbench rows visible',
+        (await page.locator('tr', { hasText: 'demo-app' }).count()) === 1,
+        'demo-app 行可见',
+        'ok',
+        'P0'
+      )
       await shot(page, 'console-login')
     })
 
@@ -587,25 +704,68 @@ async function segmentB() {
       const loadingText = await parent(page, '#workspaceOverlay [data-workspace-status]')
         .innerText()
         .catch(() => '')
-      addAssertion('overlay mounted', (await parent(page, '#workspaceOverlay').count()) === 1, 'overlay 存在', 'ok', 'P0')
-      addAssertion('loading status present', /正在进入项目工作区/.test(loadingText), '正在进入项目工作区…', loadingText, 'P2')
+      addAssertion(
+        'overlay mounted',
+        (await parent(page, '#workspaceOverlay').count()) === 1,
+        'overlay 存在',
+        'ok',
+        'P0'
+      )
+      addAssertion(
+        'loading status present',
+        /正在进入项目工作区/.test(loadingText),
+        '正在进入项目工作区…',
+        loadingText,
+        'P2'
+      )
       await shot(page, 'overlay-loading')
       readyState = await waitOverlayReady(page, 35000)
     })
 
     await runStep('B', '覆盖层就绪：embed iframe 与路线徽标', async () => {
       const state = readyState ?? (await waitOverlayReady(page, 5000))
-      addAssertion('workspace ready', state?.ready === true, 'ready', JSON.stringify(state).slice(0, 300), 'P0')
+      addAssertion(
+        'workspace ready',
+        state?.ready === true,
+        'ready',
+        JSON.stringify(state).slice(0, 300),
+        'P0'
+      )
       addAssertion('no failure state', !state?.failure, '无失败态', state?.failure ?? '', 'P0')
-      addAssertion('iframe is cloud-admin embed', /cloud-admin\.html\?.*embed=1/.test(state?.iframeSrc ?? ''), 'cloud-admin.html?embed=1', state?.iframeSrc ?? '', 'P0')
+      addAssertion(
+        'iframe is cloud-admin embed',
+        /cloud-admin\.html\?.*embed=1/.test(state?.iframeSrc ?? ''),
+        'cloud-admin.html?embed=1',
+        state?.iframeSrc ?? '',
+        'P0'
+      )
       const frame = frameOf(page)
       const frameUrl = frame?.url() ?? ''
-      addAssertion('handoff hash cleared in iframe', !frameUrl.includes('handoff='), 'iframe URL 无 handoff=', frameUrl, 'P1')
-      addAssertion('route badge 直连/中继', /直连|中继/.test(state?.route ?? ''), '直连|中继', state?.route ?? '', 'P1')
+      addAssertion(
+        'handoff hash cleared in iframe',
+        !frameUrl.includes('handoff='),
+        'iframe URL 无 handoff=',
+        frameUrl,
+        'P1'
+      )
+      addAssertion(
+        'route badge 直连/中继',
+        /直连|中继/.test(state?.route ?? ''),
+        '直连|中继',
+        state?.route ?? '',
+        'P1'
+      )
       const adminHandoffs = events.handoffs.filter(
         (h) => h.segment === 'B' && h.url.includes(`/v1/projects/${PROJECT_DEMO}/web-handoff`)
       )
-      addAssertion('one admin-surface handoff POST', adminHandoffs.length === 1 && String(adminHandoffs[0]?.body ?? '').includes('"surface":"admin"'), '1 次 surface=admin', JSON.stringify(adminHandoffs).slice(0, 300), 'P1')
+      addAssertion(
+        'one admin-surface handoff POST',
+        adminHandoffs.length === 1 &&
+          String(adminHandoffs[0]?.body ?? '').includes('"surface":"admin"'),
+        '1 次 surface=admin',
+        JSON.stringify(adminHandoffs).slice(0, 300),
+        'P1'
+      )
       note(JSON.stringify(state).slice(0, 500))
       await shot(page, 'overlay-ready')
     })
@@ -614,22 +774,57 @@ async function segmentB() {
       await t(page, 'cloud-simple-workspace').waitFor()
       const body = await demoText(page)
       const status = await t(page, 'cloud-simple-workspace-status-bar').innerText()
-      addAssertion('two-pane shell with file/git tabs and + 终端', /文件/.test(body) && /Git 变更/.test(body) && /\+ 终端/.test(body), '文件/Git 变更/+ 终端', body.slice(0, 200), 'P1')
-      addAssertion('status bar shows project/E2EE/route/branch/path', /demo-app/.test(status) && /E2EE/.test(status) && /直连|中继/.test(status) && /main/.test(status) && /\.orca-worktrees/.test(status), '项目/E2EE/路线/分支/路径', status.replaceAll('\n', ' | '), 'P1')
-      addAssertion('empty state copy', /从右侧文件树打开文件/.test(body), '从右侧文件树打开文件', body.match(/从右侧文件树打开文件[^\n]*/)?.[0] ?? 'missing', 'P2')
+      addAssertion(
+        'two-pane shell with file/git tabs and + 终端',
+        /文件/.test(body) && /Git 变更/.test(body) && /\+ 终端/.test(body),
+        '文件/Git 变更/+ 终端',
+        body.slice(0, 200),
+        'P1'
+      )
+      addAssertion(
+        'status bar shows project/E2EE/route/branch/path',
+        /demo-app/.test(status) &&
+          /E2EE/.test(status) &&
+          /直连|中继/.test(status) &&
+          /main/.test(status) &&
+          /\.orca-worktrees/.test(status),
+        '项目/E2EE/路线/分支/路径',
+        status.replaceAll('\n', ' | '),
+        'P1'
+      )
+      addAssertion(
+        'empty state copy',
+        /从右侧文件树打开文件/.test(body),
+        '从右侧文件树打开文件',
+        body.match(/从右侧文件树打开文件[^\n]*/)?.[0] ?? 'missing',
+        'P2'
+      )
       await shot(page, 'shell-status')
     })
 
     await runStep('B', '文件树：根节点与目录展开', async () => {
       const rootNodes = await demoFrame(page).evaluate(() =>
-        [...document.querySelectorAll('[data-testid^="cloud-workspace-file-tree-node-"]')].map((el) =>
-          el.getAttribute('data-testid').replace('cloud-workspace-file-tree-node-', '')
+        [...document.querySelectorAll('[data-testid^="cloud-workspace-file-tree-node-"]')].map(
+          (el) => el.getAttribute('data-testid').replace('cloud-workspace-file-tree-node-', '')
         )
       )
-      addAssertion('root lists docs/src/README.md and hides .git', ['docs', 'src', 'README.md'].every((x) => rootNodes.includes(x)) && !rootNodes.some((x) => x.includes('.git')), 'docs/src/README.md, no .git', JSON.stringify(rootNodes), 'P1')
+      addAssertion(
+        'root lists docs/src/README.md and hides .git',
+        ['docs', 'src', 'README.md'].every((x) => rootNodes.includes(x)) &&
+          !rootNodes.some((x) => x.includes('.git')),
+        'docs/src/README.md, no .git',
+        JSON.stringify(rootNodes),
+        'P1'
+      )
       await expandParents(page, 'docs/r2-fixtures/r2-markdown.md')
       const visible = await demoText(page)
-      addAssertion('expanded tree shows docs subtree', /r2-fixtures|design\.md/.test(visible), 'docs 子项可见', visible.slice(0, 160), 'P2')
+      addAssertion(
+        'expanded tree shows docs subtree',
+        /r2-fixtures|design\.md/.test(visible),
+        'docs 子项可见',
+        visible.slice(0, 160),
+        'P2'
+      )
       await shot(page, 'file-tree-root')
     })
 
@@ -637,21 +832,36 @@ async function segmentB() {
       await t(page, 'cloud-simple-workspace-new-terminal').click()
       await demoFrame(page).locator('.xterm:visible').first().waitFor({ timeout: 40000 })
       for (let i = 0; i < 60; i += 1) {
-        const state = await demoFrame(page).evaluate(() => document.querySelector('[data-testid="cloud-terminal-state"]')?.textContent ?? '')
+        const state = await demoFrame(page).evaluate(
+          () => document.querySelector('[data-testid="cloud-terminal-state"]')?.textContent ?? ''
+        )
         if (state.includes('实时')) break
         await sleep(500)
       }
-      const terminalState = await demoFrame(page).evaluate(() => document.querySelector('[data-testid="cloud-terminal-state"]')?.textContent ?? '')
-      addAssertion('terminal state is 实时', /实时/.test(terminalState), '实时', terminalState, 'P0')
+      const terminalState = await demoFrame(page).evaluate(
+        () => document.querySelector('[data-testid="cloud-terminal-state"]')?.textContent ?? ''
+      )
+      addAssertion(
+        'terminal state is 实时',
+        /实时/.test(terminalState),
+        '实时',
+        terminalState,
+        'P0'
+      )
       const marker = path.join(WT, 'docs/r2-manreview-terminal-marker')
-      try { fs.unlinkSync(marker) } catch {}
+      try {
+        fs.unlinkSync(marker)
+      } catch {}
       await demoFrame(page).locator('.xterm-screen:visible').first().click()
       await page.keyboard.type(`touch ${JSON.stringify(marker)}`)
       await page.keyboard.press('Enter')
       let exists = false
       const deadline = Date.now() + 12000
       while (Date.now() < deadline) {
-        if (fs.existsSync(marker)) { exists = true; break }
+        if (fs.existsSync(marker)) {
+          exists = true
+          break
+        }
         await sleep(300)
       }
       addAssertion('command executes on host', exists, '宿主出现 marker 文件', String(exists), 'P0')
@@ -667,18 +877,35 @@ async function segmentB() {
       const marker = `manreviewedit${Date.now()}`
       const typed = await monacoAppend(page, `\n${marker}`)
       await sleep(700)
-      addAssertion('buffer receives the typed marker', typed, 'Monaco 模型含 marker', String(typed), 'P1')
+      addAssertion(
+        'buffer receives the typed marker',
+        typed,
+        'Monaco 模型含 marker',
+        String(typed),
+        'P1'
+      )
       const dirtyTab = await t(page, 'cloud-simple-workspace-tab-dirty-file:README.md').count()
       const statusDirty = await t(page, 'cloud-simple-workspace-status-dirty').count()
       let parentDirty = ''
       try {
-        await page.waitForFunction(() => {
-          const el = document.querySelector('#workspaceOverlay [data-workspace-dirty]')
-          return el && el.hidden === false
-        }, { timeout: 6000 })
+        await page.waitForFunction(
+          () => {
+            const el = document.querySelector('#workspaceOverlay [data-workspace-dirty]')
+            return el && el.hidden === false
+          },
+          { timeout: 6000 }
+        )
         parentDirty = await parent(page, '#workspaceOverlay [data-workspace-dirty]').innerText()
-      } catch { parentDirty = 'not-visible' }
-      addAssertion('edit marks tab/status/overlay dirty', dirtyTab > 0 && statusDirty > 0 && /未保存文件/.test(parentDirty), '三处 dirty', JSON.stringify({ dirtyTab, statusDirty, parentDirty }), 'P0')
+      } catch {
+        parentDirty = 'not-visible'
+      }
+      addAssertion(
+        'edit marks tab/status/overlay dirty',
+        dirtyTab > 0 && statusDirty > 0 && /未保存文件/.test(parentDirty),
+        '三处 dirty',
+        JSON.stringify({ dirtyTab, statusDirty, parentDirty }),
+        'P0'
+      )
       await shot(page, 'editor-dirty')
       await t(page, 'cloud-workspace-file-tab-save').click()
       let cleared = false
@@ -690,7 +917,13 @@ async function segmentB() {
         if (cleared && hasMarker) break
         await sleep(300)
       }
-      addAssertion('save writes host file and clears dirty', cleared && hasMarker, '磁盘含 marker + dirty 清空', JSON.stringify({ cleared, hasMarker }), 'P0')
+      addAssertion(
+        'save writes host file and clears dirty',
+        cleared && hasMarker,
+        '磁盘含 marker + dirty 清空',
+        JSON.stringify({ cleared, hasMarker }),
+        'P0'
+      )
       await shot(page, 'editor-saved')
     })
 
@@ -706,19 +939,47 @@ async function segmentB() {
         h2Count: root.querySelectorAll('h2').length,
         tableRows: root.querySelectorAll('table tr').length,
         code: root.querySelector('pre code')?.textContent ?? '',
-        linkTarget: root.querySelector('a[href="https://orca.example.com"]')?.getAttribute('target') ?? '',
+        linkTarget:
+          root.querySelector('a[href="https://orca.example.com"]')?.getAttribute('target') ?? '',
         katex: root.querySelectorAll('.katex').length,
         details: root.querySelectorAll('details').length,
         scripts: root.querySelectorAll('script').length,
         iframes: root.querySelectorAll('iframe').length,
         onerrorAttrs: root.querySelectorAll('[onerror]').length,
-        jsHrefs: [...root.querySelectorAll('a')].filter((a) => (a.getAttribute('href') ?? '').startsWith('javascript:')).length
+        jsHrefs: [...root.querySelectorAll('a')].filter((a) =>
+          (a.getAttribute('href') ?? '').startsWith('javascript:')
+        ).length
       }))
-      addAssertion('GFM headings/table/code/link render', rendered.h1.includes('R2 Markdown') && rendered.h2Count >= 5 && rendered.tableRows >= 3 && rendered.code.includes('const answer') && rendered.linkTarget === '_blank', '完整 GFM', JSON.stringify(rendered).slice(0, 300), 'P1')
+      addAssertion(
+        'GFM headings/table/code/link render',
+        rendered.h1.includes('R2 Markdown') &&
+          rendered.h2Count >= 5 &&
+          rendered.tableRows >= 3 &&
+          rendered.code.includes('const answer') &&
+          rendered.linkTarget === '_blank',
+        '完整 GFM',
+        JSON.stringify(rendered).slice(0, 300),
+        'P1'
+      )
       addAssertion('katex renders', rendered.katex > 0, 'katex > 0', String(rendered.katex), 'P2')
-      addAssertion('XSS surface stripped', rendered.scripts === 0 && rendered.iframes === 0 && rendered.onerrorAttrs === 0 && rendered.jsHrefs === 0, 'script/iframe/onerror/js=0', JSON.stringify(rendered).slice(0, 200), 'P0')
+      addAssertion(
+        'XSS surface stripped',
+        rendered.scripts === 0 &&
+          rendered.iframes === 0 &&
+          rendered.onerrorAttrs === 0 &&
+          rendered.jsHrefs === 0,
+        'script/iframe/onerror/js=0',
+        JSON.stringify(rendered).slice(0, 200),
+        'P0'
+      )
       const xssFlag = await demoFrame(page).evaluate(() => window.__r2Xss ?? null)
-      addAssertion('XSS marker never executed', xssFlag === null, 'undefined', String(xssFlag), 'P0')
+      addAssertion(
+        'XSS marker never executed',
+        xssFlag === null,
+        'undefined',
+        String(xssFlag),
+        'P0'
+      )
       await shot(page, 'markdown-preview')
       await t(page, 'cloud-workspace-file-tab-mode-edit').click()
       await demoFrame(page).locator('.monaco-editor:visible').first().waitFor({ timeout: 20000 })
@@ -739,7 +1000,13 @@ async function segmentB() {
         naturalHeight: el.naturalHeight
       }))
       const badge = await t(page, 'cloud-workspace-preview-kind').innerText()
-      addAssertion('image renders from data URL', info.src?.startsWith('data:image/') && info.naturalWidth > 0, 'data:image + naturalWidth>0', JSON.stringify({ info, badge }), 'P1')
+      addAssertion(
+        'image renders from data URL',
+        info.src?.startsWith('data:image/') && info.naturalWidth > 0,
+        'data:image + naturalWidth>0',
+        JSON.stringify({ info, badge }),
+        'P1'
+      )
       await shot(page, 'preview-image')
     })
 
@@ -753,7 +1020,9 @@ async function segmentB() {
         sandbox: el.getAttribute('sandbox'),
         referrer: el.getAttribute('referrerpolicy')
       }))
-      const child = demoFrame(page).childFrames().find((f) => f.url().startsWith('about:srcdoc'))
+      const child = demoFrame(page)
+        .childFrames()
+        .find((f) => f.url().startsWith('about:srcdoc'))
       const childInfo = child
         ? await child.evaluate(() => ({
             text: document.body.innerText.slice(0, 120),
@@ -761,8 +1030,22 @@ async function segmentB() {
             imgError: document.body.getAttribute('data-img-error')
           }))
         : null
-      addAssertion('HTML sandbox empty + no-referrer', attrs.sandbox === '' && attrs.referrer === 'no-referrer', "sandbox='' / no-referrer", JSON.stringify(attrs), 'P0')
-      addAssertion('scripts and onerror blocked', childInfo?.scriptRan === null && childInfo?.imgError === null && /R2 HTML 沙箱样本/.test(childInfo?.text ?? ''), 'srcdoc 正文可见、脚本未执行', JSON.stringify(childInfo), 'P0')
+      addAssertion(
+        'HTML sandbox empty + no-referrer',
+        attrs.sandbox === '' && attrs.referrer === 'no-referrer',
+        "sandbox='' / no-referrer",
+        JSON.stringify(attrs),
+        'P0'
+      )
+      addAssertion(
+        'scripts and onerror blocked',
+        childInfo?.scriptRan === null &&
+          childInfo?.imgError === null &&
+          /R2 HTML 沙箱样本/.test(childInfo?.text ?? ''),
+        'srcdoc 正文可见、脚本未执行',
+        JSON.stringify(childInfo),
+        'P0'
+      )
       await shot(page, 'preview-html')
     })
 
@@ -770,65 +1053,138 @@ async function segmentB() {
       await t(page, 'cloud-simple-workspace-right-tab-git').click()
       await t(page, 'cloud-workspace-git-panel').waitFor({ timeout: 30000 })
       await sleep(1200)
-      const porcelain = execFileSync('git', ['-c', 'core.quotepath=false', 'status', '--porcelain', '--untracked-files=all'], { cwd: WT, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-      const commitCount = execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: WT, encoding: 'utf8' }).trim()
+      const porcelain = execFileSync(
+        'git',
+        ['-c', 'core.quotepath=false', 'status', '--porcelain', '--untracked-files=all'],
+        { cwd: WT, encoding: 'utf8' }
+      )
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+      const commitCount = execFileSync('git', ['rev-list', '--count', 'HEAD'], {
+        cwd: WT,
+        encoding: 'utf8'
+      }).trim()
       const panel = await t(page, 'cloud-workspace-git-panel').evaluate((root) => {
-        const groups = [...root.querySelectorAll('[data-testid^="cloud-workspace-git-group-"]')].map((g) => ({
+        const groups = [
+          ...root.querySelectorAll('[data-testid^="cloud-workspace-git-group-"]')
+        ].map((g) => ({
           status: g.getAttribute('data-testid').replace('cloud-workspace-git-group-', ''),
-          files: [...g.querySelectorAll('[data-testid^="cloud-workspace-git-change-"]')].map((b) => b.getAttribute('data-testid').replace('cloud-workspace-git-change-', ''))
+          files: [...g.querySelectorAll('[data-testid^="cloud-workspace-git-change-"]')].map((b) =>
+            b.getAttribute('data-testid').replace('cloud-workspace-git-change-', '')
+          )
         }))
         const commits = [...root.querySelectorAll('[data-testid^="cloud-workspace-git-commit-"]')]
           .filter((el) => !el.getAttribute('data-testid').includes('-file'))
           .map((el) => el.getAttribute('data-testid').replace('cloud-workspace-git-commit-', ''))
         return { groups, commits }
       })
-      const actualUntracked = porcelain.filter((l) => l.startsWith('??')).map((l) => l.slice(3).trim().replace(/^"(.*)"$/, '$1'))
+      const actualUntracked = porcelain
+        .filter((l) => l.startsWith('??'))
+        .map((l) =>
+          l
+            .slice(3)
+            .trim()
+            .replace(/^"(.*)"$/, '$1')
+        )
       const panelUntracked = panel.groups.find((g) => g.status === 'untracked')?.files ?? []
-      const missing = panelUntracked.filter((p) => !actualUntracked.some((a) => a === p || a.endsWith('/' + p)))
-      addAssertion('untracked group matches git status', actualUntracked.length >= 10 && missing.length === 0, 'untracked >=10 且全部在面板', JSON.stringify({ porcelain: actualUntracked.length, panel: panelUntracked.length, missing }), 'P1')
-      addAssertion('history commit count matches', panel.commits.length === Number(commitCount), `${commitCount} commits`, String(panel.commits.length), 'P1')
+      const missing = panelUntracked.filter(
+        (p) => !actualUntracked.some((a) => a === p || a.endsWith('/' + p))
+      )
+      addAssertion(
+        'untracked group matches git status',
+        actualUntracked.length >= 10 && missing.length === 0,
+        'untracked >=10 且全部在面板',
+        JSON.stringify({
+          porcelain: actualUntracked.length,
+          panel: panelUntracked.length,
+          missing
+        }),
+        'P1'
+      )
+      addAssertion(
+        'history commit count matches',
+        panel.commits.length === Number(commitCount),
+        `${commitCount} commits`,
+        String(panel.commits.length),
+        'P1'
+      )
       note(JSON.stringify(panel.groups.map((g) => [g.status, g.files.length])))
       await shot(page, 'git-panel')
     })
 
     await runStep('B', '提交 diff：懒加载 + 左右/合并切换', async () => {
-      const first = demoFrame(page).locator('[data-testid^="cloud-workspace-git-commit-"]:not([data-testid*="-file"])').first()
+      const first = demoFrame(page)
+        .locator('[data-testid^="cloud-workspace-git-commit-"]:not([data-testid*="-file"])')
+        .first()
       await first.click()
       await sleep(1500)
       const rows = demoFrame(page).locator('[data-testid^="cloud-workspace-git-commit-file-"]')
       const count = await rows.count()
       addAssertion('commit expands to file rows', count >= 1, '>=1 提交文件', String(count), 'P1')
       if (count === 0) return
-      const rel = await rows.first().evaluate((el) => el.getAttribute('data-testid').replace('cloud-workspace-git-commit-file-', ''))
+      const rel = await rows
+        .first()
+        .evaluate((el) =>
+          el.getAttribute('data-testid').replace('cloud-workspace-git-commit-file-', '')
+        )
       await rows.first().click()
       await waitTab(page, rel)
       await t(page, 'cloud-workspace-diff-tab').waitFor({ timeout: 30000 })
       // Wait for the lazy diff fetch to finish before judging the badge/shot.
-      await t(page, 'cloud-workspace-diff-loading').waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
+      await t(page, 'cloud-workspace-diff-loading')
+        .waitFor({ state: 'detached', timeout: 30000 })
+        .catch(() => {})
       const source = await t(page, 'cloud-workspace-diff-source').innerText()
       addAssertion('commit diff source badge 提交', /提交/.test(source), '提交 <sha>', source, 'P1')
-      const initial = await t(page, 'cloud-workspace-diff-mode-side-by-side').getAttribute('aria-pressed')
+      const initial = await t(page, 'cloud-workspace-diff-mode-side-by-side').getAttribute(
+        'aria-pressed'
+      )
       await t(page, 'cloud-workspace-diff-mode-inline').click()
       const inline = await t(page, 'cloud-workspace-diff-mode-inline').getAttribute('aria-pressed')
       await t(page, 'cloud-workspace-diff-mode-side-by-side').click()
-      const back = await t(page, 'cloud-workspace-diff-mode-side-by-side').getAttribute('aria-pressed')
-      addAssertion('左右/合并 toggle works', initial === 'true' && inline === 'true' && back === 'true', 'aria-pressed 翻转', JSON.stringify({ initial, inline, back }), 'P1')
+      const back = await t(page, 'cloud-workspace-diff-mode-side-by-side').getAttribute(
+        'aria-pressed'
+      )
+      addAssertion(
+        '左右/合并 toggle works',
+        initial === 'true' && inline === 'true' && back === 'true',
+        'aria-pressed 翻转',
+        JSON.stringify({ initial, inline, back }),
+        'P1'
+      )
       // The diff pane lazy-loads its Monaco module; wait for real lines before
       // the screenshot, otherwise the evidence only shows 「正在加载编辑器…」.
       const diffPane = demoFrame(page).locator('[data-testid="cloud-workspace-diff-tab"]:visible')
-      await diffPane.locator('.monaco-diff-editor').first().waitFor({ timeout: 30000 }).catch(() => {})
-      await demoFrame(page).locator('.view-line:visible').first().waitFor({ timeout: 30000 }).catch(() => {})
+      await diffPane
+        .locator('.monaco-diff-editor')
+        .first()
+        .waitFor({ timeout: 30000 })
+        .catch(() => {})
+      await demoFrame(page)
+        .locator('.view-line:visible')
+        .first()
+        .waitFor({ timeout: 30000 })
+        .catch(() => {})
       await sleep(1000)
       const diffLines = await demoFrame(page)
         .locator('[data-testid="cloud-workspace-diff-tab"]:visible .view-line')
         .count()
         .catch(() => 0)
-      addAssertion('commit diff renders Monaco lines', diffLines > 0, '>0 行', String(diffLines), 'P1')
+      addAssertion(
+        'commit diff renders Monaco lines',
+        diffLines > 0,
+        '>0 行',
+        String(diffLines),
+        'P1'
+      )
       await shot(page, 'diff-commit-modes')
     })
 
     await runStep('B', '工作区 diff：UI 保存后在「修改」组出现', async () => {
-      await t(page, 'cloud-simple-workspace-right-tab-files').click().catch(() => {})
+      await t(page, 'cloud-simple-workspace-right-tab-files')
+        .click()
+        .catch(() => {})
       await clickFileNode(page, 'README.md')
       await demoFrame(page).locator('.monaco-editor:visible').first().waitFor({ timeout: 30000 })
       await sleep(400)
@@ -843,44 +1199,86 @@ async function segmentB() {
       await t(page, 'cloud-workspace-git-refresh').click()
       await sleep(1500)
       const row = demoFrame(page).locator('[data-testid="cloud-workspace-git-change-README.md"]')
-      addAssertion('saved edit appears in modified group', (await row.count()) > 0, 'README.md 修改行', String(await row.count()), 'P1')
+      addAssertion(
+        'saved edit appears in modified group',
+        (await row.count()) > 0,
+        'README.md 修改行',
+        String(await row.count()),
+        'P1'
+      )
       if ((await row.count()) === 0) return
       await row.first().click()
       await t(page, 'cloud-workspace-diff-tab').waitFor({ timeout: 30000 })
-      await t(page, 'cloud-workspace-diff-loading').waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
+      await t(page, 'cloud-workspace-diff-loading')
+        .waitFor({ state: 'detached', timeout: 30000 })
+        .catch(() => {})
       const source = await t(page, 'cloud-workspace-diff-source').innerText()
       let hasDiffText = false
       const diffDeadline = Date.now() + 20000
       while (Date.now() < diffDeadline) {
-        hasDiffText = await demoFrame(page).evaluate((m) => document.body.innerText.includes(m), marker)
+        hasDiffText = await demoFrame(page).evaluate(
+          (m) => document.body.innerText.includes(m),
+          marker
+        )
         if (hasDiffText) break
         await sleep(400)
       }
-      addAssertion('working diff shows 工作区 source and change text', /工作区/.test(source) && hasDiffText, '工作区 + diff 内容', JSON.stringify({ source, hasDiffText }), 'P1')
+      addAssertion(
+        'working diff shows 工作区 source and change text',
+        /工作区/.test(source) && hasDiffText,
+        '工作区 + diff 内容',
+        JSON.stringify({ source, hasDiffText }),
+        'P1'
+      )
       await shot(page, 'diff-working')
     })
 
     await runStep('B', '二进制 diff 降级', async () => {
-      const binRow = demoFrame(page).locator('[data-testid="cloud-workspace-git-change-docs/r2-fixtures/r2-binary.bin"]')
-      addAssertion('binary fixture row present', (await binRow.count()) > 0, 'r2-binary.bin 行', String(await binRow.count()), 'P2')
+      const binRow = demoFrame(page).locator(
+        '[data-testid="cloud-workspace-git-change-docs/r2-fixtures/r2-binary.bin"]'
+      )
+      addAssertion(
+        'binary fixture row present',
+        (await binRow.count()) > 0,
+        'r2-binary.bin 行',
+        String(await binRow.count()),
+        'P2'
+      )
       if ((await binRow.count()) === 0) return
       await binRow.first().click()
       await t(page, 'cloud-workspace-diff-tab').waitFor({ timeout: 30000 })
       await sleep(1500)
       const binary = await t(page, 'cloud-workspace-diff-binary').count()
       const body = await demoText(page)
-      addAssertion('binary diff shows binary notice', binary > 0 || /二进制/.test(body), '二进制提示', JSON.stringify({ binary, tail: body.slice(-160) }), 'P1')
+      addAssertion(
+        'binary diff shows binary notice',
+        binary > 0 || /二进制/.test(body),
+        '二进制提示',
+        JSON.stringify({ binary, tail: body.slice(-160) }),
+        'P1'
+      )
       await shot(page, 'diff-binary')
     })
 
     await runStep('B', '多标签混合（终端/文件/预览/diff）', async () => {
       const ids = await tabIds(page)
-      addAssertion('terminal + file + preview + diff coexist', ids.some((i) => i.startsWith('terminal-')) && ids.some((i) => i.startsWith('file:')) && ids.some((i) => i.startsWith('preview:')) && ids.some((i) => i.startsWith('diff:')), '四类标签共存', JSON.stringify(ids.slice(-10)), 'P1')
+      addAssertion(
+        'terminal + file + preview + diff coexist',
+        ids.some((i) => i.startsWith('terminal-')) &&
+          ids.some((i) => i.startsWith('file:')) &&
+          ids.some((i) => i.startsWith('preview:')) &&
+          ids.some((i) => i.startsWith('diff:')),
+        '四类标签共存',
+        JSON.stringify(ids.slice(-10)),
+        'P1'
+      )
       await shot(page, 'tabs-mixed')
     })
 
     await runStep('B', '关闭握手：覆盖层 dirty 确认 + 移除', async () => {
-      await t(page, 'cloud-simple-workspace-right-tab-files').click().catch(() => {})
+      await t(page, 'cloud-simple-workspace-right-tab-files')
+        .click()
+        .catch(() => {})
       await clickFileNode(page, 'README.md')
       await demoFrame(page).locator('.monaco-editor:visible').first().waitFor({ timeout: 30000 })
       await sleep(400)
@@ -888,13 +1286,24 @@ async function segmentB() {
       await sleep(700)
       let dirtyText = ''
       try {
-        await page.waitForFunction(() => {
-          const el = document.querySelector('#workspaceOverlay [data-workspace-dirty]')
-          return el && el.hidden === false
-        }, { timeout: 8000 })
+        await page.waitForFunction(
+          () => {
+            const el = document.querySelector('#workspaceOverlay [data-workspace-dirty]')
+            return el && el.hidden === false
+          },
+          { timeout: 8000 }
+        )
         dirtyText = await parent(page, '#workspaceOverlay [data-workspace-dirty]').innerText()
-      } catch { dirtyText = 'not-visible' }
-      addAssertion('overlay dirty indicator visible', /未保存文件/.test(dirtyText), 'N 个未保存文件', dirtyText, 'P1')
+      } catch {
+        dirtyText = 'not-visible'
+      }
+      addAssertion(
+        'overlay dirty indicator visible',
+        /未保存文件/.test(dirtyText),
+        'N 个未保存文件',
+        dirtyText,
+        'P1'
+      )
       const urlBefore = workbenchUrl()
       const before = Date.now()
       // The global handler accepts the native confirm; this promise keeps its
@@ -907,7 +1316,10 @@ async function segmentB() {
       let removed = false
       const deadline = Date.now() + 12000
       while (Date.now() < deadline) {
-        if ((await parent(page, '#workspaceOverlay').count()) === 0) { removed = true; break }
+        if ((await parent(page, '#workspaceOverlay').count()) === 0) {
+          removed = true
+          break
+        }
         await sleep(100)
       }
       const elapsed = Date.now() - before
@@ -915,28 +1327,72 @@ async function segmentB() {
         (await Promise.race([dialogPromise, sleep(1500).then(() => null)])) ??
         events.dialogs.find((d) => d.segment === 'B' && /未保存文件/.test(d.message)) ??
         null
-      addAssertion('native confirm shows dirty text', /有 \d+ 个文件未保存，确定关闭工作区/.test(dialog?.message ?? ''), '有 N 个文件未保存，确定关闭工作区？', dialog?.message ?? 'no dialog', 'P1')
-      addAssertion('overlay removed after handshake', removed, 'overlay 消失', String(removed), 'P0')
-      addAssertion('close completes within fallback window', elapsed < 5000, '< 5s', `${elapsed}ms`, 'P2')
-      addAssertion('workbench URL unchanged', workbenchUrl() === urlBefore, urlBefore, workbenchUrl(), 'P2')
+      addAssertion(
+        'native confirm shows dirty text',
+        /有 \d+ 个文件未保存，确定关闭工作区/.test(dialog?.message ?? ''),
+        '有 N 个文件未保存，确定关闭工作区？',
+        dialog?.message ?? 'no dialog',
+        'P1'
+      )
+      addAssertion(
+        'overlay removed after handshake',
+        removed,
+        'overlay 消失',
+        String(removed),
+        'P0'
+      )
+      addAssertion(
+        'close completes within fallback window',
+        elapsed < 5000,
+        '< 5s',
+        `${elapsed}ms`,
+        'P2'
+      )
+      addAssertion(
+        'workbench URL unchanged',
+        workbenchUrl() === urlBefore,
+        urlBefore,
+        workbenchUrl(),
+        'P2'
+      )
       note(JSON.stringify({ elapsed, dialog: dialog?.message }))
       await shot(page, 'closed-workbench')
     })
 
     await runStep('B', '二次打开（同项目）：ready 且空标签集', async () => {
       const state = await openOverlay(page, 'demo-app')
-      addAssertion('second overlay ready', state?.ready === true, 'ready', JSON.stringify(state).slice(0, 300), 'P0')
-      addAssertion('no NOT_SIGNED_IN failure', !/NOT_SIGNED_IN/.test(state?.failure ?? ''), '无 NOT_SIGNED_IN', state?.failure ?? '', 'P0')
+      addAssertion(
+        'second overlay ready',
+        state?.ready === true,
+        'ready',
+        JSON.stringify(state).slice(0, 300),
+        'P0'
+      )
+      addAssertion(
+        'no NOT_SIGNED_IN failure',
+        !/NOT_SIGNED_IN/.test(state?.failure ?? ''),
+        '无 NOT_SIGNED_IN',
+        state?.failure ?? '',
+        'P0'
+      )
       await sleep(800)
       const ids = await tabIds(page).catch(() => [])
-      addAssertion('second open starts with empty tab set', ids.length === 0, '0 tabs', JSON.stringify(ids), 'P1')
+      addAssertion(
+        'second open starts with empty tab set',
+        ids.length === 0,
+        '0 tabs',
+        JSON.stringify(ids),
+        'P1'
+      )
       await shot(page, 'second-open-empty')
     })
   } finally {
     await context.close()
     // Leave the demo checkout as found (fixtures stay untracked by design).
     for (const rel of ['README.md', 'docs/design.md']) {
-      try { execFileSync('git', ['checkout', '--', rel], { cwd: WT }) } catch {}
+      try {
+        execFileSync('git', ['checkout', '--', rel], { cwd: WT })
+      } catch {}
     }
   }
 }
@@ -956,17 +1412,49 @@ async function reentryScenario(segment, name, firstKey, secondKey) {
       await loginConsole(page)
       const first = await openOverlay(page, firstKey)
       await shot(page, `${name}-first`)
-      addAssertion('first open ready', first?.ready === true, 'ready', JSON.stringify(first).slice(0, 250), 'P0')
+      addAssertion(
+        'first open ready',
+        first?.ready === true,
+        'ready',
+        JSON.stringify(first).slice(0, 250),
+        'P0'
+      )
       const closed = await closeOverlay(page)
       await sleep(1500)
       const second = await openOverlay(page, secondKey)
       await shot(page, `${name}-second`)
-      addAssertion('overlay closed between opens', closed.closed === true, 'closed', JSON.stringify(closed), 'P0')
-      addAssertion('second open ready', second?.ready === true, 'ready', JSON.stringify(second).slice(0, 250), 'P0')
-      addAssertion('second open has no failure body', !second?.failure, '无失败态', second?.failure ?? '', 'P0')
+      addAssertion(
+        'overlay closed between opens',
+        closed.closed === true,
+        'closed',
+        JSON.stringify(closed),
+        'P0'
+      )
+      addAssertion(
+        'second open ready',
+        second?.ready === true,
+        'ready',
+        JSON.stringify(second).slice(0, 250),
+        'P0'
+      )
+      addAssertion(
+        'second open has no failure body',
+        !second?.failure,
+        '无失败态',
+        second?.failure ?? '',
+        'P0'
+      )
       const frame = frameOf(page)
-      const body = frame ? await frame.evaluate(() => document.body.innerText.slice(0, 200)).catch(() => '') : ''
-      addAssertion('second frame is not NOT_SIGNED_IN', !/NOT_SIGNED_IN/.test(body), '无 NOT_SIGNED_IN', body.slice(0, 120), 'P0')
+      const body = frame
+        ? await frame.evaluate(() => document.body.innerText.slice(0, 200)).catch(() => '')
+        : ''
+      addAssertion(
+        'second frame is not NOT_SIGNED_IN',
+        !/NOT_SIGNED_IN/.test(body),
+        '无 NOT_SIGNED_IN',
+        body.slice(0, 120),
+        'P0'
+      )
       note(JSON.stringify({ first: first?.ready, closed, second: second?.ready }))
     })
   } finally {

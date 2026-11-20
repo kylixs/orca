@@ -6,7 +6,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
-const dir = path.join(ROOT, 'remote-connectivity/design/2026-11-13-cloud-dev-platform/current-state')
+const dir = path.join(
+  ROOT,
+  'remote-connectivity/design/2026-11-13-cloud-dev-platform/current-state'
+)
 
 const failures = []
 const fail = (message) => failures.push(message)
@@ -18,10 +21,22 @@ function read(name) {
 function moduleTable(text) {
   const rows = []
   for (const line of text.split('\n')) {
-    const m = line.match(/^\|\s*(M\d+)\s*\|[^|]*\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|\s*$/)
-    if (m) rows.push({ name: m[1], nums: m.slice(2).map((cell) => Number(cell.replace(/\*/g, '').trim())) })
-    const t = line.match(/^\|\s*\*\*合计\*\*\s*\|[^|]*\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|\s*$/)
-    if (t) rows.push({ name: 'TOTAL', nums: t.slice(1).map((cell) => Number(cell.replace(/\*/g, '').trim())) })
+    const m = line.match(
+      /^\|\s*(M\d+)\s*\|[^|]*\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|\s*$/
+    )
+    if (m)
+      rows.push({
+        name: m[1],
+        nums: m.slice(2).map((cell) => Number(cell.replace(/\*/g, '').trim()))
+      })
+    const t = line.match(
+      /^\|\s*\*\*合计\*\*\s*\|[^|]*\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|\s*$/
+    )
+    if (t)
+      rows.push({
+        name: 'TOTAL',
+        nums: t.slice(1).map((cell) => Number(cell.replace(/\*/g, '').trim()))
+      })
   }
   return rows
 }
@@ -36,13 +51,17 @@ function checkAcceptanceCases() {
   const sum = [0, 0, 0, 0, 0, 0, 0]
   for (const row of mods) {
     const [cases, normal, abnormal, pin, auto, manual, uncovered] = row.nums
-    if (cases !== normal + abnormal + pin) fail(`${row.name}: ${cases} != ${normal}+${abnormal}+${pin}`)
-    if (cases !== auto + manual + uncovered) fail(`${row.name}: ${cases} != ${auto}+${manual}+${uncovered}`)
+    if (cases !== normal + abnormal + pin)
+      fail(`${row.name}: ${cases} != ${normal}+${abnormal}+${pin}`)
+    if (cases !== auto + manual + uncovered)
+      fail(`${row.name}: ${cases} != ${auto}+${manual}+${uncovered}`)
     row.nums.forEach((n, i) => (sum[i] += n))
   }
   const [tc, tn, ta, tp, tauto, tmanual, tunc] = total.nums
-  if (tn !== sum[1] || ta !== sum[2] || tp !== sum[3]) fail('totals: normal/abnormal/pin do not add up')
-  if (tc !== sum[0] || tauto !== sum[4] || tmanual !== sum[5] || tunc !== sum[6]) fail('totals row does not match column sums')
+  if (tn !== sum[1] || ta !== sum[2] || tp !== sum[3])
+    fail('totals: normal/abnormal/pin do not add up')
+  if (tc !== sum[0] || tauto !== sum[4] || tmanual !== sum[5] || tunc !== sum[6])
+    fail('totals row does not match column sums')
   if (tc !== tn + ta + tp) fail('totals: cases != normal+abnormal+pin')
   if (tc !== tauto + tmanual + tunc) fail('totals: cases != auto+manual+uncovered')
 
@@ -51,7 +70,10 @@ function checkAcceptanceCases() {
   const gaps = gapSection.split('\n').filter((l) => /^\|\s*G\d+\s*\|/.test(l))
   const counts = { closed: 0, partial: 0, open: 0 }
   for (const line of gaps) {
-    const cells = line.replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+    const cells = line
+      .replace(/^\||\|$/g, '')
+      .split('|')
+      .map((c) => c.trim())
     const title = cells[1] ?? ''
     const type = cells[3] ?? ''
     if (type.startsWith('closed') || title.includes('closed')) counts.closed += 1
@@ -67,9 +89,18 @@ function checkAcceptanceCases() {
     if (closed !== counts.closed) fail(`§13 closed: text ${closed} != rows ${counts.closed}`)
     if (partial !== counts.partial) fail(`§13 partial: text ${partial} != rows ${counts.partial}`)
     if (open !== counts.open) fail(`§13 open: text ${open} != rows ${counts.open}`)
-    if (closed + partial + open !== gaps.length) fail(`§13 sum ${closed + partial + open} != ${gaps.length} gap rows`)
+    if (closed + partial + open !== gaps.length)
+      fail(`§13 sum ${closed + partial + open} != ${gaps.length} gap rows`)
   }
-  return { modules: mods.length, cases: tc, auto: tauto, manual: tmanual, uncovered: tunc, gaps: gaps.length, ...counts }
+  return {
+    modules: mods.length,
+    cases: tc,
+    auto: tauto,
+    manual: tmanual,
+    uncovered: tunc,
+    gaps: gaps.length,
+    ...counts
+  }
 }
 
 function checkBusinessFlows() {
@@ -87,13 +118,20 @@ function checkBusinessFlows() {
   for (const row of rows) {
     const [steps, branches, coveredSteps, coveredBranches] = row.nums
     if (coveredSteps > steps) fail(`${row.name}: covered steps ${coveredSteps} > ${steps}`)
-    if (coveredBranches > branches) fail(`${row.name}: covered branches ${coveredBranches} > ${branches}`)
+    if (coveredBranches > branches)
+      fail(`${row.name}: covered branches ${coveredBranches} > ${branches}`)
     row.nums.forEach((n, i) => (sum[i] += n))
   }
   total.forEach((n, i) => {
     if (n !== sum[i]) fail(`business-flows total[${i}] ${n} != sum ${sum[i]}`)
   })
-  return { flows: rows.length, steps: total[0], branches: total[1], coveredSteps: total[2], coveredBranches: total[3] }
+  return {
+    flows: rows.length,
+    steps: total[0],
+    branches: total[1],
+    coveredSteps: total[2],
+    coveredBranches: total[3]
+  }
 }
 
 const acceptance = checkAcceptanceCases()

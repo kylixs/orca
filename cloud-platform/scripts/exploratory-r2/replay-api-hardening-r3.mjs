@@ -10,7 +10,10 @@ let adminToken = ''
 async function api(p, { method = 'GET', body, token = adminToken } = {}) {
   const res = await fetch(BASE + p, {
     method,
-    headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), authorization: `Bearer ${token}` },
+    headers: {
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      authorization: `Bearer ${token}`
+    },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   })
   const text = await res.text()
@@ -18,8 +21,14 @@ async function api(p, { method = 'GET', body, token = adminToken } = {}) {
 }
 try {
   const login = await fetch(BASE + '/v1/auth/login', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'Adm1n!', devicePubKey: 'rfix-verify-key', deviceName: 'replay' })
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      username: 'admin',
+      password: 'Adm1n!',
+      devicePubKey: 'rfix-verify-key',
+      deviceName: 'replay'
+    })
   })
   const loginBody = await login.json()
   out.login = { status: login.status }
@@ -29,16 +38,24 @@ try {
   const tokenRes = await api('/v1/hosts/tokens', { method: 'POST' })
   const hostToken = tokenRes.body.token
   const regRes = await fetch(BASE + '/v1/hosts/register', {
-    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${hostToken}` },
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${hostToken}` },
     body: JSON.stringify({
-      name: `rfix-verify-${Date.now()}`, fingerprint: 'sha256:rfix-verify', e2eePublicKeyB64: 'rfix-key',
-      orcaVersion: '1.5.0', protocolVersion: 3, networkZone: 'intranet',
-      directAddrs: ['127.0.0.1:19101'], relayTarget: '127.0.0.1:19101', runtimeCapabilities: ['pty', 'files']
+      name: `rfix-verify-${Date.now()}`,
+      fingerprint: 'sha256:rfix-verify',
+      e2eePublicKeyB64: 'rfix-key',
+      orcaVersion: '1.5.0',
+      protocolVersion: 3,
+      networkZone: 'intranet',
+      directAddrs: ['127.0.0.1:19101'],
+      relayTarget: '127.0.0.1:19101',
+      runtimeCapabilities: ['pty', 'files']
     })
   })
   const host = await regRes.json()
   const badBeat = await fetch(`${BASE}/v1/hosts/${host.hostId}/heartbeat`, {
-    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${host.credential}` },
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${host.credential}` },
     body: JSON.stringify({ directAddrs: [123] })
   })
   const projectsAfterBadBeat = await api('/v1/projects')
@@ -49,22 +66,32 @@ try {
     projectsStatus: projectsAfterBadBeat.status,
     projectCount: projectsAfterBadBeat.body.projects?.length ?? null,
     storedDirectAddrs: storedHost?.directAddrs ?? null,
-    pass: badBeat.status === 400 && projectsAfterBadBeat.status === 200 && JSON.stringify(storedHost?.directAddrs) === JSON.stringify(['127.0.0.1:19101'])
+    pass:
+      badBeat.status === 400 &&
+      projectsAfterBadBeat.status === 200 &&
+      JSON.stringify(storedHost?.directAddrs) === JSON.stringify(['127.0.0.1:19101'])
   }
 
   // ---- U57③ malformed permissions keeps the row ----
   const beforeGrants = await api('/v1/projects/proj_payment/grants')
-  const beforeRow = beforeGrants.body.grants.find((g) => g.subjectType === 'group' && g.subjectId === 'team-payment')
+  const beforeRow = beforeGrants.body.grants.find(
+    (g) => g.subjectType === 'group' && g.subjectId === 'team-payment'
+  )
   const badPut = await api('/v1/projects/proj_payment/grants', {
-    method: 'PUT', body: { subjectType: 'group', subjectId: 'team-payment', permissions: 'open' }
+    method: 'PUT',
+    body: { subjectType: 'group', subjectId: 'team-payment', permissions: 'open' }
   })
   const afterGrants = await api('/v1/projects/proj_payment/grants')
-  const afterRow = afterGrants.body.grants.find((g) => g.subjectType === 'group' && g.subjectId === 'team-payment')
+  const afterRow = afterGrants.body.grants.find(
+    (g) => g.subjectType === 'group' && g.subjectId === 'team-payment'
+  )
   out.grantPermissions = {
     putStatus: badPut.status,
     before: beforeRow?.permissions ?? null,
     after: afterRow?.permissions ?? null,
-    pass: badPut.status === 400 && JSON.stringify(beforeRow?.permissions) === JSON.stringify(afterRow?.permissions)
+    pass:
+      badPut.status === 400 &&
+      JSON.stringify(beforeRow?.permissions) === JSON.stringify(afterRow?.permissions)
   }
 
   // ---- U57④ audit limit page ----
@@ -81,8 +108,12 @@ try {
     negative: auditNegative.body.events?.length ?? null,
     statuses: [auditDefault.status, auditBad.status, auditZero.status, auditNegative.status],
     pass:
-      auditBad.status === 200 && auditZero.status === 200 && auditNegative.status === 200 &&
-      (auditBad.body.events?.length ?? 0) <= 50 && (auditZero.body.events?.length ?? 0) <= 50 && (auditNegative.body.events?.length ?? 0) <= 50
+      auditBad.status === 200 &&
+      auditZero.status === 200 &&
+      auditNegative.status === 200 &&
+      (auditBad.body.events?.length ?? 0) <= 50 &&
+      (auditZero.body.events?.length ?? 0) <= 50 &&
+      (auditNegative.body.events?.length ?? 0) <= 50
   }
   out.pass = out.badHeartbeat.pass && out.grantPermissions.pass && out.auditLimit.pass
 } catch (error) {
@@ -91,7 +122,12 @@ try {
 } finally {
   out.generatedAt = new Date().toISOString()
   fs.writeFileSync(path.join(OUT, 'p1-api-hardening.json'), JSON.stringify(out, null, 2))
-  console.log(`${out.pass ? 'PASS' : 'FAIL'} api-hardening ${JSON.stringify({
-    badHeartbeat: out.badHeartbeat, grantPermissions: out.grantPermissions, auditLimit: out.auditLimit, error: out.error
-  })}`)
+  console.log(
+    `${out.pass ? 'PASS' : 'FAIL'} api-hardening ${JSON.stringify({
+      badHeartbeat: out.badHeartbeat,
+      grantPermissions: out.grantPermissions,
+      auditLimit: out.auditLimit,
+      error: out.error
+    })}`
+  )
 }

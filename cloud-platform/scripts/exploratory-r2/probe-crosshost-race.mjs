@@ -9,7 +9,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const browser = await chromium.launch({ headless: true })
 
 async function scenario(name, { terminal, waitAfterClose }) {
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1600, height: 1000 } })
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    viewport: { width: 1600, height: 1000 }
+  })
   const page = await context.newPage()
   page.setDefaultTimeout(20000)
   page.on('dialog', (d) => d.accept())
@@ -21,13 +24,18 @@ async function scenario(name, { terminal, waitAfterClose }) {
   }
   await page.waitForSelector('text=demo-app')
   const fr = () => page.frames().find((f) => f.url().includes('/cloud-admin.html'))
-  await page.locator('tr', { hasText: 'demo-app' }).getByRole('button', { name: '打开', exact: true }).click()
+  await page
+    .locator('tr', { hasText: 'demo-app' })
+    .getByRole('button', { name: '打开', exact: true })
+    .click()
   await page.locator('#workspaceOverlay iframe').waitFor()
   await sleep(6000)
   if (terminal) {
     await fr().locator('[data-testid="cloud-simple-workspace-new-terminal"]').click()
     for (let i = 0; i < 60; i += 1) {
-      const st = await fr().evaluate(() => document.querySelector('[data-testid="cloud-terminal-state"]')?.textContent ?? '')
+      const st = await fr().evaluate(
+        () => document.querySelector('[data-testid="cloud-terminal-state"]')?.textContent ?? ''
+      )
       if (st.includes('实时')) break
       await sleep(500)
     }
@@ -39,7 +47,10 @@ async function scenario(name, { terminal, waitAfterClose }) {
   await page.locator('#workspaceOverlay [data-workspace-close]').click()
   await sleep(waitAfterClose)
   const removed = (await page.locator('#workspaceOverlay').count()) === 0
-  await page.locator('tr', { hasText: 'infra-tools' }).getByRole('button', { name: '打开', exact: true }).click()
+  await page
+    .locator('tr', { hasText: 'infra-tools' })
+    .getByRole('button', { name: '打开', exact: true })
+    .click()
   await page.locator('#workspaceOverlay iframe').waitFor()
   let last = null
   for (let i = 0; i < 24; i += 1) {
@@ -54,7 +65,9 @@ async function scenario(name, { terminal, waitAfterClose }) {
       }
     })
     const frame = fr()
-    const body = frame ? await frame.evaluate(() => document.body.innerText.slice(0, 200)).catch(() => 'ERR') : null
+    const body = frame
+      ? await frame.evaluate(() => document.body.innerText.slice(0, 200)).catch(() => 'ERR')
+      : null
     last = { t: i + 1, ...st, frame: frame ? frame.url().slice(0, 90) : null, body }
     if (st.failure) break
     if (st.status === true) break

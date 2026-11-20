@@ -20,7 +20,8 @@ import {
 } from './desktop-harness.mjs'
 
 const USER_DATA = '/tmp/orca-explore-r2/ud-fresh2'
-const MAIN2 = '/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/zhangsan/main-2'
+const MAIN2 =
+  '/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/zhangsan/main-2'
 const README = path.join(MAIN2, 'README.md')
 const README_BACKUP = '/tmp/orca-explore-r2/README.main-2.bak'
 const BIN = path.join(MAIN2, 'explore-binary.bin')
@@ -78,7 +79,9 @@ try {
     await wait(1200)
   }
   out.probes.menuPicked = await page.evaluate(() => {
-    const target = [...document.querySelectorAll('[role="menuitem"]')].find((el) => /新终端|New Terminal/i.test(el.innerText ?? ''))
+    const target = [...document.querySelectorAll('[role="menuitem"]')].find((el) =>
+      /新终端|New Terminal/i.test(el.innerText ?? '')
+    )
     if (!target) return null
     target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
     target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }))
@@ -94,18 +97,28 @@ try {
   await wait(4000)
   out.probes.explorerRows = await page.evaluate(() => {
     const shell = document.querySelector('[data-orca-explorer-shell]')
-    return shell ? [...shell.querySelectorAll('button[data-file-explorer-row]')].map((el) => (el.innerText ?? '').replace(/\s+/g, ' ').trim()).slice(0, 40) : null
+    return shell
+      ? [...shell.querySelectorAll('button[data-file-explorer-row]')]
+          .map((el) => (el.innerText ?? '').replace(/\s+/g, ' ').trim())
+          .slice(0, 40)
+      : null
   })
   out.probes.readmeOpen = await page.evaluate(() => {
     const shell = document.querySelector('[data-orca-explorer-shell]')
-    const row = shell ? [...shell.querySelectorAll('button[data-file-explorer-row]')].find((el) => /README\.md/i.test(el.innerText ?? '')) : null
+    const row = shell
+      ? [...shell.querySelectorAll('button[data-file-explorer-row]')].find((el) =>
+          /README\.md/i.test(el.innerText ?? '')
+        )
+      : null
     if (!row) return null
     row.click()
     return (row.innerText ?? '').trim()
   })
   await wait(6000)
   out.probes.editor = await page.evaluate(() => ({
-    headers: [...document.querySelectorAll('.editor-header-path')].map((el) => el.textContent?.trim()),
+    headers: [...document.querySelectorAll('.editor-header-path')].map((el) =>
+      el.textContent?.trim()
+    ),
     monaco: Boolean(document.querySelector('.monaco-editor')),
     body: (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 900)
   }))
@@ -134,25 +147,44 @@ try {
   }
   out.probes.fileAfterSave = existsSync(README) ? readFileSync(README, 'utf8') : null
   out.probes.saveRoundTrip = (out.probes.fileAfterSave ?? '').includes(marker)
-  out.probes.saveUi = await page.evaluate(() => (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 800))
+  out.probes.saveUi = await page.evaluate(() =>
+    (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 800)
+  )
   await shoot(page, '83-main2-saved.png')
   if (!out.probes.saveRoundTrip) {
-    finding('P2', 'D-FILE-SAVE-FAIL', '编辑保存未落盘', `在 main-2 的 README.md 追加标记后 Cmd+S，磁盘内容未包含标记：${marker}`, '83-main2-saved.png')
+    finding(
+      'P2',
+      'D-FILE-SAVE-FAIL',
+      '编辑保存未落盘',
+      `在 main-2 的 README.md 追加标记后 Cmd+S，磁盘内容未包含标记：${marker}`,
+      '83-main2-saved.png'
+    )
   }
 
   // Markdown preview toggle.
   out.probes.previewButton = await page.evaluate(() => {
-    const buttons = [...document.querySelectorAll('button')].filter((b) => b.getClientRects().length)
-    const target = buttons.find((b) => /预览|preview/i.test(`${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''} ${b.innerText ?? ''}`))
+    const buttons = [...document.querySelectorAll('button')].filter(
+      (b) => b.getClientRects().length
+    )
+    const target = buttons.find((b) =>
+      /预览|preview/i.test(
+        `${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''} ${b.innerText ?? ''}`
+      )
+    )
     if (!target) return null
-    const label = `${target.getAttribute('aria-label') ?? ''} ${target.getAttribute('title') ?? ''} ${target.innerText ?? ''}`.trim()
+    const label =
+      `${target.getAttribute('aria-label') ?? ''} ${target.getAttribute('title') ?? ''} ${target.innerText ?? ''}`.trim()
     target.click()
     return label.slice(0, 120)
   })
   await wait(4000)
   out.probes.previewState = await page.evaluate(() => {
     const body = (document.body.innerText ?? '').replace(/\s+/g, ' ')
-    return { rendered: /基础设施运维工具集/.test(body), source: /# infra-tools/.test(body), body: body.slice(0, 900) }
+    return {
+      rendered: /基础设施运维工具集/.test(body),
+      source: /# infra-tools/.test(body),
+      body: body.slice(0, 900)
+    }
   })
   await shoot(page, '84-main2-preview.png')
 
@@ -160,7 +192,13 @@ try {
   writeFileSync(BIN, Buffer.from([0, 1, 2, 3, 255, 254, 0, 66, 67]))
   out.probes.refreshClicked = await page.evaluate(() => {
     const shell = document.querySelector('[data-orca-explorer-shell]')
-    const btn = shell ? [...shell.querySelectorAll('button')].find((b) => /刷新|refresh/i.test(`${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''}`)) : null
+    const btn = shell
+      ? [...shell.querySelectorAll('button')].find((b) =>
+          /刷新|refresh/i.test(
+            `${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''}`
+          )
+        )
+      : null
     if (!btn) return false
     btn.click()
     return true
@@ -168,7 +206,11 @@ try {
   await wait(3500)
   out.probes.binaryOpen = await page.evaluate(() => {
     const shell = document.querySelector('[data-orca-explorer-shell]')
-    const row = shell ? [...shell.querySelectorAll('button[data-file-explorer-row]')].find((el) => /explore-binary\.bin/i.test(el.innerText ?? '')) : null
+    const row = shell
+      ? [...shell.querySelectorAll('button[data-file-explorer-row]')].find((el) =>
+          /explore-binary\.bin/i.test(el.innerText ?? '')
+        )
+      : null
     if (!row) return null
     row.click()
     return (row.innerText ?? '').trim()
@@ -184,7 +226,13 @@ try {
   })
   await shoot(page, '85-main2-binary.png')
   if (out.probes.binaryState?.hasControlChars && !out.probes.binaryState?.hasNotice) {
-    finding('P2', 'D-BINARY-RAW', '二进制文件按文本渲染', '打开 .bin 文件时编辑器显示原始控制字符，未给出二进制/不支持提示', '85-main2-binary.png')
+    finding(
+      'P2',
+      'D-BINARY-RAW',
+      '二进制文件按文本渲染',
+      '打开 .bin 文件时编辑器显示原始控制字符，未给出二进制/不支持提示',
+      '85-main2-binary.png'
+    )
   }
 
   // Agents panel + settings/skills.
@@ -192,19 +240,27 @@ try {
   await wait(4000)
   out.probes.agents = await page.evaluate(() => ({
     body: (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 1400),
-    testids: [...new Set([...document.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid')))].slice(0, 100)
+    testids: [
+      ...new Set(
+        [...document.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid'))
+      )
+    ].slice(0, 100)
   }))
   await shoot(page, '86-agents.png')
   out.probes.settingsClicked = await clickAria('设置')
   await wait(3500)
   out.probes.settings = await page.evaluate(() => ({
     body: (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 1400),
-    dialogs: [...document.querySelectorAll('[data-slot="dialog-content"], [role="dialog"]')].map((d) => (d.innerText ?? '').replace(/\s+/g, ' ').slice(0, 300))
+    dialogs: [...document.querySelectorAll('[data-slot="dialog-content"], [role="dialog"]')].map(
+      (d) => (d.innerText ?? '').replace(/\s+/g, ' ').slice(0, 300)
+    )
   }))
   await shoot(page, '87-settings.png')
   // Find and open the Skills pane if the settings text names it.
   out.probes.skillsNav = await page.evaluate(() => {
-    const el = [...document.querySelectorAll('button, [role="tab"], [role="menuitem"], a')].find((b) => /技能|Skills/i.test(b.innerText ?? ''))
+    const el = [...document.querySelectorAll('button, [role="tab"], [role="menuitem"], a')].find(
+      (b) => /技能|Skills/i.test(b.innerText ?? '')
+    )
     if (!el) return null
     el.click()
     return (el.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
@@ -212,15 +268,23 @@ try {
   await wait(3500)
   out.probes.skills = await page.evaluate(() => ({
     body: (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 1400),
-    testids: [...new Set([...document.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid')))].slice(0, 100)
+    testids: [
+      ...new Set(
+        [...document.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid'))
+      )
+    ].slice(0, 100)
   }))
   await shoot(page, '88-skills.png')
 
   // Rapid project switching boundary.
   const switched = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('[data-worktree-id]')]
-    const root = rows.find((el) => /infra-tools/.test(el.innerText ?? '') && /主要/.test(el.innerText ?? ''))
-    const perUser = rows.find((el) => /infra-tools/.test(el.innerText ?? '') && /main-2/.test(el.innerText ?? ''))
+    const root = rows.find(
+      (el) => /infra-tools/.test(el.innerText ?? '') && /主要/.test(el.innerText ?? '')
+    )
+    const perUser = rows.find(
+      (el) => /infra-tools/.test(el.innerText ?? '') && /main-2/.test(el.innerText ?? '')
+    )
     const surfaces = [root, perUser, root, perUser].filter(Boolean)
     for (const row of surfaces) (row.querySelector('[data-worktree-card-surface]') ?? row).click()
     return surfaces.length
@@ -239,32 +303,55 @@ try {
   out.logs = logs?.filter((l) => !l.includes('Electron Security Warning')).slice(0, 300)
   out.finishedAt = new Date().toISOString()
   writeFileSync(path.join(EVIDENCE, 'fresh2-stage.json'), JSON.stringify(out, null, 2))
-  try { await page?.screenshot({ path: path.join(EVIDENCE, 'screenshots', '89-fresh2-final.png') }) } catch {}
-  try { await app?.close() } catch {}
-  console.log(JSON.stringify({
-    error: out.error,
-    findings: out.findings,
-    signedIn: out.probes.signedIn,
-    clickedMain2: out.probes.clickedMain2,
-    rows: out.probes.rows,
-    menuPicked: out.probes.menuPicked,
-    afterTerminalAttempt: { terms: out.probes.afterTerminalAttempt?.terminals, tabs: out.probes.afterTerminalAttempt?.tabs, body: (out.probes.afterTerminalAttempt?.bodyText ?? '').slice(0, 400) },
-    explorerRows: out.probes.explorerRows,
-    readmeOpen: out.probes.readmeOpen,
-    editor: { headers: out.probes.editor?.headers, monaco: out.probes.editor?.monaco },
-    editorFocus: out.probes.editorFocus,
-    saveRoundTrip: out.probes.saveRoundTrip,
-    previewButton: out.probes.previewButton,
-    preview: { rendered: out.probes.previewState?.rendered, source: out.probes.previewState?.source },
-    binaryOpen: out.probes.binaryOpen,
-    binaryState: { control: out.probes.binaryState?.hasControlChars, notice: out.probes.binaryState?.hasNotice },
-    agentsClicked: out.probes.agentsClicked,
-    agentsBody: out.probes.agents?.body?.slice(0, 700),
-    settingsClicked: out.probes.settingsClicked,
-    skillsNav: out.probes.skillsNav,
-    skillsBody: out.probes.skills?.body?.slice(0, 700),
-    rapidSwitches: out.probes.rapidSwitches,
-    afterRapid: { alerts: out.probes.afterRapid?.alerts, body: (out.probes.afterRapid?.bodyText ?? '').slice(0, 500) },
-    logs: out.logs
-  }, null, 2))
+  try {
+    await page?.screenshot({ path: path.join(EVIDENCE, 'screenshots', '89-fresh2-final.png') })
+  } catch {}
+  try {
+    await app?.close()
+  } catch {}
+  console.log(
+    JSON.stringify(
+      {
+        error: out.error,
+        findings: out.findings,
+        signedIn: out.probes.signedIn,
+        clickedMain2: out.probes.clickedMain2,
+        rows: out.probes.rows,
+        menuPicked: out.probes.menuPicked,
+        afterTerminalAttempt: {
+          terms: out.probes.afterTerminalAttempt?.terminals,
+          tabs: out.probes.afterTerminalAttempt?.tabs,
+          body: (out.probes.afterTerminalAttempt?.bodyText ?? '').slice(0, 400)
+        },
+        explorerRows: out.probes.explorerRows,
+        readmeOpen: out.probes.readmeOpen,
+        editor: { headers: out.probes.editor?.headers, monaco: out.probes.editor?.monaco },
+        editorFocus: out.probes.editorFocus,
+        saveRoundTrip: out.probes.saveRoundTrip,
+        previewButton: out.probes.previewButton,
+        preview: {
+          rendered: out.probes.previewState?.rendered,
+          source: out.probes.previewState?.source
+        },
+        binaryOpen: out.probes.binaryOpen,
+        binaryState: {
+          control: out.probes.binaryState?.hasControlChars,
+          notice: out.probes.binaryState?.hasNotice
+        },
+        agentsClicked: out.probes.agentsClicked,
+        agentsBody: out.probes.agents?.body?.slice(0, 700),
+        settingsClicked: out.probes.settingsClicked,
+        skillsNav: out.probes.skillsNav,
+        skillsBody: out.probes.skills?.body?.slice(0, 700),
+        rapidSwitches: out.probes.rapidSwitches,
+        afterRapid: {
+          alerts: out.probes.afterRapid?.alerts,
+          body: (out.probes.afterRapid?.bodyText ?? '').slice(0, 500)
+        },
+        logs: out.logs
+      },
+      null,
+      2
+    )
+  )
 }

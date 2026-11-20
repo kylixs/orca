@@ -9,7 +9,9 @@ function compareFields({ add, role, surface, p, a }) {
   for (const pair of match.pairs) {
     const prototypeField = p.fields[pair.prototypeIndex]
     const actualField = a.fields[pair.actualIndex]
-    if (!prototypeField || !actualField) {continue}
+    if (!prototypeField || !actualField) {
+      continue
+    }
     if (pair.via !== 'exact') {
       add({
         role,
@@ -34,7 +36,11 @@ function compareFields({ add, role, surface, p, a }) {
         kind: 'selector_drift',
         object: 'field',
         severity: 'P2',
-        prototype: { label: prototypeField.label, id: prototypeField.id, name: prototypeField.name },
+        prototype: {
+          label: prototypeField.label,
+          id: prototypeField.id,
+          name: prototypeField.name
+        },
         actual: { label: actualField.label, id: actualField.id, name: actualField.name },
         message: `字段「${prototypeField.label}」选择器漂移：id ${prototypeField.id ?? '∅'} → ${
           actualField.id ?? '∅'
@@ -158,7 +164,9 @@ function dedupeActions(actions) {
   const seen = new Set()
   return actions.filter((action) => {
     const key = `${normalizeLabel(action.label)}|${action.role}`
-    if (seen.has(key)) {return false}
+    if (seen.has(key)) {
+      return false
+    }
     seen.add(key)
     return true
   })
@@ -174,7 +182,9 @@ function compareActions({ add, role, surface, p, a }) {
   for (const pair of match.pairs) {
     const prototypeAction = prototypeActions[pair.prototypeIndex]
     const actualAction = actualActions[pair.actualIndex]
-    if (!prototypeAction || !actualAction) {continue}
+    if (!prototypeAction || !actualAction) {
+      continue
+    }
     if (pair.via !== 'exact') {
       add({
         role,
@@ -233,6 +243,5 @@ function compareActions({ add, role, surface, p, a }) {
     })
   )
 }
-
 
 export { compareFields, compareActions }

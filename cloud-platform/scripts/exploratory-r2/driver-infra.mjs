@@ -87,9 +87,9 @@ try {
 
   // 2) Terminal via + menu, selecting "New Terminal" if the menu opens.
   out.probes.plusClicked = await page.evaluate(() => {
-    const btn = [...document.querySelectorAll('button[aria-label="新标签页"], button[aria-label="New tab"]')].find(
-      (b) => b.getClientRects().length
-    )
+    const btn = [
+      ...document.querySelectorAll('button[aria-label="新标签页"], button[aria-label="New tab"]')
+    ].find((b) => b.getClientRects().length)
     if (!btn) return false
     btn.click()
     return true
@@ -99,15 +99,17 @@ try {
     const text = (el) => (el?.innerText ?? '').replace(/\s+/g, ' ').trim()
     return {
       menuWrappers: [...document.querySelectorAll('[data-radix-popper-content-wrapper]')].length,
-      items: [...document.querySelectorAll('[role="menuitem"], [data-slot="dropdown-menu-item"]')].map(
-        (el) => ({ text: text(el), disabled: el.getAttribute('data-disabled') !== null })
-      ),
+      items: [
+        ...document.querySelectorAll('[role="menuitem"], [data-slot="dropdown-menu-item"]')
+      ].map((el) => ({ text: text(el), disabled: el.getAttribute('data-disabled') !== null })),
       menuTexts: [...document.querySelectorAll('[role="menu"]')].map((el) => text(el).slice(0, 800))
     }
   })
   await shoot(page, '51-plus-menu.png')
   const picked = await page.evaluate(() => {
-    const items = [...document.querySelectorAll('[role="menuitem"], [data-slot="dropdown-menu-item"]')]
+    const items = [
+      ...document.querySelectorAll('[role="menuitem"], [data-slot="dropdown-menu-item"]')
+    ]
     const target = items.find((el) => /新终端|终端|New Terminal/i.test(el.innerText ?? ''))
     if (!target) return null
     target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
@@ -128,7 +130,7 @@ try {
     await typeInTerminal(page, 'echo 中文输入回声_基础设施')
     await wait(4000)
     out.probes.chinese = await terminalText(page)
-    await typeInTerminal(page, "for i in $(seq 1 400); do echo LONG_LINE_$i; done")
+    await typeInTerminal(page, 'for i in $(seq 1 400); do echo LONG_LINE_$i; done')
     await wait(8000)
     out.probes.long = await terminalText(page)
     out.probes.longTailSeen = (out.probes.long ?? '').includes('LONG_LINE_400')
@@ -146,7 +148,9 @@ try {
   out.probes.explorerRows = await page.evaluate(() => {
     const shell = document.querySelector('[data-orca-explorer-shell]')
     if (!shell) return null
-    return [...shell.querySelectorAll('button[data-file-explorer-row]')].map((el) => (el.innerText ?? '').replace(/\s+/g, ' ').trim()).slice(0, 40)
+    return [...shell.querySelectorAll('button[data-file-explorer-row]')]
+      .map((el) => (el.innerText ?? '').replace(/\s+/g, ' ').trim())
+      .slice(0, 40)
   })
   await shoot(page, '55-explorer.png')
 
@@ -163,7 +167,9 @@ try {
   })
   await wait(6000)
   out.probes.editorAfterOpen = await page.evaluate(() => ({
-    headers: [...document.querySelectorAll('.editor-header-path')].map((el) => el.textContent?.trim()),
+    headers: [...document.querySelectorAll('.editor-header-path')].map((el) =>
+      el.textContent?.trim()
+    ),
     monaco: Boolean(document.querySelector('.monaco-editor')),
     body: (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 900)
   }))
@@ -171,10 +177,17 @@ try {
 
   // 5) Markdown preview toggle (find a button whose aria/title mentions preview).
   out.probes.previewButton = await page.evaluate(() => {
-    const buttons = [...document.querySelectorAll('button')].filter((b) => b.getClientRects().length)
-    const target = buttons.find((b) => /预览|preview/i.test(`${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''} ${b.innerText ?? ''}`))
+    const buttons = [...document.querySelectorAll('button')].filter(
+      (b) => b.getClientRects().length
+    )
+    const target = buttons.find((b) =>
+      /预览|preview/i.test(
+        `${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''} ${b.innerText ?? ''}`
+      )
+    )
     if (!target) return null
-    const label = `${target.getAttribute('aria-label') ?? ''} ${target.getAttribute('title') ?? ''}`.trim()
+    const label =
+      `${target.getAttribute('aria-label') ?? ''} ${target.getAttribute('title') ?? ''}`.trim()
     target.click()
     return label
   })
@@ -195,8 +208,8 @@ try {
   out.probes.refreshClicked = await page.evaluate(() => {
     const shell = document.querySelector('[data-orca-explorer-shell]')
     if (!shell) return false
-    const btn = [...shell.querySelectorAll('button')].find(
-      (b) => /刷新|refresh/i.test(`${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''}`)
+    const btn = [...shell.querySelectorAll('button')].find((b) =>
+      /刷新|refresh/i.test(`${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''}`)
     )
     if (!btn) return false
     btn.click()
@@ -234,7 +247,14 @@ try {
   await wait(4000)
   out.probes.agentsPanel = await page.evaluate(() => {
     const body = (document.body.innerText ?? '').replace(/\s+/g, ' ')
-    return { body: body.slice(0, 1400), testids: [...new Set([...document.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid')))].slice(0, 80) }
+    return {
+      body: body.slice(0, 1400),
+      testids: [
+        ...new Set(
+          [...document.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid'))
+        )
+      ].slice(0, 80)
+    }
   })
   out.probes.uiAgents = await dumpUi(page)
   await shoot(page, '59-agents.png')
@@ -250,8 +270,12 @@ try {
   out.logs = logs?.filter((l) => !l.includes('Electron Security Warning')).slice(0, 300)
   out.finishedAt = new Date().toISOString()
   writeFileSync(path.join(EVIDENCE, 'infra-stage.json'), JSON.stringify(out, null, 2))
-  try { await page?.screenshot({ path: path.join(EVIDENCE, 'screenshots', '59-infra-final.png') }) } catch {}
-  try { await app?.close() } catch {}
+  try {
+    await page?.screenshot({ path: path.join(EVIDENCE, 'screenshots', '59-infra-final.png') })
+  } catch {}
+  try {
+    await app?.close()
+  } catch {}
   console.log(
     JSON.stringify(
       {
@@ -261,7 +285,11 @@ try {
         clicked: out.probes.clicked,
         settings: out.probes.settings,
         runtimeStatus: out.probes.runtimeStatus,
-        afterMetaT: { terms: out.probes.afterMetaT?.terminals, tabs: out.probes.afterMetaT?.tabs, body: (out.probes.afterMetaT?.bodyText ?? '').slice(0, 400) },
+        afterMetaT: {
+          terms: out.probes.afterMetaT?.terminals,
+          tabs: out.probes.afterMetaT?.tabs,
+          body: (out.probes.afterMetaT?.bodyText ?? '').slice(0, 400)
+        },
         focusedMetaT: out.probes.focusedMetaT,
         menu: out.probes.menuDump,
         menuPicked: out.probes.menuPicked,
@@ -272,15 +300,23 @@ try {
         longTailSeen: out.probes.longTailSeen,
         explorerRows: out.probes.explorerRows,
         readmeOpen: out.probes.readmeOpen,
-        editor: { headers: out.probes.editorAfterOpen?.headers, monaco: out.probes.editorAfterOpen?.monaco },
+        editor: {
+          headers: out.probes.editorAfterOpen?.headers,
+          monaco: out.probes.editorAfterOpen?.monaco
+        },
         previewButton: out.probes.previewButton,
-        previewState: { rendered: out.probes.previewState?.hasRenderedHeading, source: out.probes.previewState?.hasMarkdownSource },
+        previewState: {
+          rendered: out.probes.previewState?.hasRenderedHeading,
+          source: out.probes.previewState?.hasMarkdownSource
+        },
         binaryRows: out.probes.binaryRows,
         binaryOpen: out.probes.binaryOpen,
         binaryNotice: out.probes.binaryState?.hasBinaryNotice,
         agentsClicked: out.probes.agentsClicked,
         agentsBody: out.probes.agentsPanel?.body?.slice(0, 900),
-        logs: out.logs?.filter((l) => /error|warn|CloudRuntime|terminal|session\.tabs/.test(l)).slice(0, 80)
+        logs: out.logs
+          ?.filter((l) => /error|warn|CloudRuntime|terminal|session\.tabs/.test(l))
+          .slice(0, 80)
       },
       null,
       2

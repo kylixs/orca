@@ -15,15 +15,29 @@ async function login(page) {
 }
 const fr = (page) => page.frames().find((f) => f.url().includes('/cloud-admin.html'))
 async function open(page, key) {
-  await page.locator('tr', { hasText: key }).getByRole('button', { name: '打开', exact: true }).click()
+  await page
+    .locator('tr', { hasText: key })
+    .getByRole('button', { name: '打开', exact: true })
+    .click()
   await page.locator('#workspaceOverlay iframe').waitFor()
   for (let i = 0; i < 40; i += 1) {
     await sleep(500)
     const st = await page.evaluate(() => {
       const o = document.querySelector('#workspaceOverlay')
-      return { ready: o?.querySelector('[data-workspace-status]')?.hidden === true, failure: !!o?.querySelector('[data-workspace-ready-failure]') }
+      return {
+        ready: o?.querySelector('[data-workspace-status]')?.hidden === true,
+        failure: !!o?.querySelector('[data-workspace-ready-failure]')
+      }
     })
-    if (st.ready || st.failure) return { ...st, body: fr(page) ? await fr(page).evaluate(() => document.body.innerText.slice(0, 180)).catch(() => '') : null }
+    if (st.ready || st.failure)
+      return {
+        ...st,
+        body: fr(page)
+          ? await fr(page)
+              .evaluate(() => document.body.innerText.slice(0, 180))
+              .catch(() => '')
+          : null
+      }
   }
   return { timeout: true }
 }

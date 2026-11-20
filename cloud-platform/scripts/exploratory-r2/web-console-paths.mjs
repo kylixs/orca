@@ -19,7 +19,10 @@ function check(id, ok, detail, knownFinding = null) {
 
 async function main() {
   const browser = await chromium.launch({ headless: true })
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } })
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    viewport: { width: 1440, height: 900 }
+  })
   const page = await context.newPage()
   const consoleErrors = []
   page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()))
@@ -44,7 +47,11 @@ async function main() {
     await page.fill('#username', '   ')
     await page.fill('#password', 'x')
     await page.click('#loginBtn')
-    check('L2 whitespace username', (await text('#loginError')).includes('请输入域账号和密码'), 'client-side blocked')
+    check(
+      'L2 whitespace username',
+      (await text('#loginError')).includes('请输入域账号和密码'),
+      'client-side blocked'
+    )
 
     await page.fill('#username', USER)
     await page.fill('#password', PASS)
@@ -65,7 +72,9 @@ async function main() {
     }
     check(
       'W1 stats match API',
-      statNum('可访问项目') === projects.length && statNum('主机在线') === online && rows === projects.length,
+      statNum('可访问项目') === projects.length &&
+        statNum('主机在线') === online &&
+        rows === projects.length,
       `dom=${statNum('可访问项目')}/${statNum('主机在线')}/${rows} api=${projects.length}/${online}`
     )
     check(
@@ -84,7 +93,11 @@ async function main() {
     await page.fill('#projectSearch', 'dev-local-03')
     check('P1b search by host', (await page.locator('#projectBody tr').count()) >= 1, 'rows>=1')
     await page.fill('#projectSearch', 'no-such-project-r2')
-    check('P1c empty state', (await page.locator('#projectBody').innerText()).includes('没有匹配的项目'), 'empty row')
+    check(
+      'P1c empty state',
+      (await page.locator('#projectBody').innerText()).includes('没有匹配的项目'),
+      'empty row'
+    )
     await page.fill('#projectSearch', '')
     await page.waitForTimeout(200)
 
@@ -95,12 +108,18 @@ async function main() {
     const regErrors = (await page.locator('.dialog .body').innerText()).replace(/\s+/g, ' ')
     check(
       'P2 register empty validation',
-      ['项目名称不能为空', '长度必须为 1–64', '请选择目标主机', '项目路径不能为空'].every((s) => regErrors.includes(s)),
+      ['项目名称不能为空', '长度必须为 1–64', '请选择目标主机', '项目路径不能为空'].every((s) =>
+        regErrors.includes(s)
+      ),
       regErrors.slice(0, 140)
     )
     await page.fill('#regKey', 'PaymentService')
     await page.locator('#regKey').blur()
-    check('P2b key blur validation', (await text('#regKeyError')).includes('必须以小写字母或数字开头'), await text('#regKeyError'))
+    check(
+      'P2b key blur validation',
+      (await text('#regKeyError')).includes('必须以小写字母或数字开头'),
+      await text('#regKeyError')
+    )
     await page.keyboard.press('Escape')
     await page.waitForTimeout(150)
 
@@ -110,7 +129,9 @@ async function main() {
     const detail = (await text('.dialog .body')).replace(/\s+/g, ' ')
     check(
       'D1 detail fields',
-      ['项目 Key', '项目 ID', '创建者', '运行配置', '宿主状态', '授权与策略', '下载策略'].every((s) => detail.includes(s)),
+      ['项目 Key', '项目 ID', '创建者', '运行配置', '宿主状态', '授权与策略', '下载策略'].every(
+        (s) => detail.includes(s)
+      ),
       detail.slice(0, 160)
     )
     check('D2 detail status ready', detail.includes('就绪'), '项目状态=就绪')
@@ -121,8 +142,15 @@ async function main() {
     await page.locator('#registerHostBtn').waitFor({ state: 'visible' })
     const hostRows = await page.locator('#content tbody tr').count()
     check('H1 hosts listed', hostRows >= 3, `rows=${hostRows}`)
-    const blankHost = (await page.locator('#content tbody tr').allInnerTexts()).some((t) => /^\s*intranet\s*—/m.test(t))
-    check('H1b blank host name guarded', !blankHost, blankHost ? 'nameless host row rendered' : 'no blank row', blankHost ? 'WEB-R2-006' : null)
+    const blankHost = (await page.locator('#content tbody tr').allInnerTexts()).some((t) =>
+      /^\s*intranet\s*—/m.test(t)
+    )
+    check(
+      'H1b blank host name guarded',
+      !blankHost,
+      blankHost ? 'nameless host row rendered' : 'no blank row',
+      blankHost ? 'WEB-R2-006' : null
+    )
     const dev2Row = page.locator('#content tbody tr').filter({ hasText: 'dev-local-02' }).first()
     if ((await dev2Row.count()) > 0) {
       await dev2Row.getByRole('button', { name: '详情' }).click()
@@ -145,8 +173,16 @@ async function main() {
     await page.locator('#grantPanel').waitFor({ state: 'visible' })
     await page.getByRole('button', { name: 'demo-app' }).click()
     await page.waitForTimeout(300)
-    const headers = (await page.locator('#grantPanel thead th').allInnerTexts()).map((h) => h.trim().toLowerCase())
-    check('M1 matrix 7 permissions', ['open', 'terminal', 'agent', 'file:read', 'file:write', 'browser', 'download'].every((p) => headers.includes(p)), headers.join(','))
+    const headers = (await page.locator('#grantPanel thead th').allInnerTexts()).map((h) =>
+      h.trim().toLowerCase()
+    )
+    check(
+      'M1 matrix 7 permissions',
+      ['open', 'terminal', 'agent', 'file:read', 'file:write', 'browser', 'download'].every((p) =>
+        headers.includes(p)
+      ),
+      headers.join(',')
+    )
     const grantRows = await page.locator('#grantPanel tbody tr').count()
     check('M2 grants listed', grantRows >= 3, `rows=${grantRows}`)
 
@@ -159,12 +195,20 @@ async function main() {
     await page.click('#auditApply')
     await page.waitForTimeout(300)
     const types = await page.locator('#content tbody tr td:nth-child(3)').allInnerTexts()
-    check('A2 event filter', types.length > 0 && types.every((t) => t.trim() === 'login'), `rows=${types.length}`)
+    check(
+      'A2 event filter',
+      types.length > 0 && types.every((t) => t.trim() === 'login'),
+      `rows=${types.length}`
+    )
     await page.click('#auditReset')
     await page.waitForTimeout(300)
     await page.click('#auditMore')
     await page.waitForTimeout(400)
-    check('A3 load more', (await text('#content .page-head p')).includes('已显示 100 条'), await text('#content .page-head p'))
+    check(
+      'A3 load more',
+      (await text('#content .page-head p')).includes('已显示 100 条'),
+      await text('#content .page-head p')
+    )
     const traceDupes = await page.evaluate(() => {
       const counts = new Map()
       for (const tr of document.querySelectorAll('#content tbody tr')) {
@@ -173,20 +217,37 @@ async function main() {
       }
       return [...counts.values()].filter((n) => n > 3).length
     })
-    check('A4 trace uniqueness', traceDupes === 0, `${traceDupes} traceId(s) repeated >3 times`, traceDupes ? 'WEB-R2-010' : null)
+    check(
+      'A4 trace uniqueness',
+      traceDupes === 0,
+      `${traceDupes} traceId(s) repeated >3 times`,
+      traceDupes ? 'WEB-R2-010' : null
+    )
 
     // ---- settings ----
     await page.getByRole('button', { name: '平台设置' }).click()
     await page.locator('#savePolicy').waitFor({ state: 'visible' })
     const scope = await text('#policyScope')
     const overrides = await page.locator('[data-policy-select]').count()
-    check('S1 policy scope rendered', /跟随全局默认.*个项目.*独立覆盖.*个项目/.test(scope.replace(/\s+/g, '')), scope.replace(/\s+/g, ' '))
-    check('S2 overrides table matches count', scope.includes(String(overrides)), `selects=${overrides} scope=${scope.replace(/\s+/g, ' ')}`)
+    check(
+      'S1 policy scope rendered',
+      /跟随全局默认.*个项目.*独立覆盖.*个项目/.test(scope.replace(/\s+/g, '')),
+      scope.replace(/\s+/g, ' ')
+    )
+    check(
+      'S2 overrides table matches count',
+      scope.includes(String(overrides)),
+      `selects=${overrides} scope=${scope.replace(/\s+/g, ' ')}`
+    )
 
     // ---- forbidden preview ----
     await page.getByRole('button', { name: '查看无权限页' }).click()
     const forbidden = (await text('#content')).replace(/\s+/g, ' ')
-    check('F1 forbidden page', forbidden.includes('无权访问') && forbidden.includes('返回工作台'), forbidden.slice(0, 80))
+    check(
+      'F1 forbidden page',
+      forbidden.includes('无权访问') && forbidden.includes('返回工作台'),
+      forbidden.slice(0, 80)
+    )
     await page.getByRole('button', { name: '返回工作台' }).click()
 
     // ---- logout credential retention ----
