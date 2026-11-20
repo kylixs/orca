@@ -73,9 +73,9 @@ async function main() {
     check(
       'W1 stats match API',
       statNum('可访问项目') === projects.length &&
-        statNum('主机在线') === online &&
+        statNum('在线项目') === online &&
         rows === projects.length,
-      `dom=${statNum('可访问项目')}/${statNum('主机在线')}/${rows} api=${projects.length}/${online}`
+      `dom=${statNum('可访问项目')}/${statNum('在线项目')}/${rows} api=${projects.length}/${online}`
     )
     check(
       'W1b archived excluded from stats',

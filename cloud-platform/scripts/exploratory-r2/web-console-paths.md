@@ -83,7 +83,7 @@
 
 - 步骤：登录 admin，读取 `.stat` 四个值、`#content tbody tr` 数量、标题段落；同一时刻用页面内 fetch（带 Bearer）读取 `GET /v1/projects?includeArchived=1` 与 `/v1/policies/download`。
 - 检查点：
-  - 可访问项目 = `projects.length`；主机在线 = `hostStatus==='online'` 计数；禁用下载 = 生效策略为 deny 的计数；策略版本 = policy.version。
+  - 可访问项目 = `projects.length`；在线项目（D11 更名，原「主机在线」）= `hostStatus==='online'` 计数；禁用下载 = 生效策略为 deny 的计数；策略版本 = policy.version。
   - **已知缺陷**：`projects` 含 `status==='archived'`，统计被归档项目放大（WEB-R2-003）。取证快照：total 40 / archived 29 / online 30 / denied 5，DOM 40/30/5。
 
 ### W2 项目卡片与置灰语义
